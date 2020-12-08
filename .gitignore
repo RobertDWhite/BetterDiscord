@@ -5,3 +5,5 @@ plugins/DiscordCrypt.config.json
 emote_data.json
 emote_data.json
 *.json
+.gitignore
+.gitattributes
