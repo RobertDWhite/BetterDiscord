@@ -14,16 +14,12 @@ module.exports = (_ => {
 		"info": {
 			"name": "MessageUtilities",
 			"author": "DevilBro",
-			"version": "1.8.1",
-			"description": "Offer a number of useful message options. Remap the keybindings in the settings"
+			"version": "1.8.7",
+			"description": "Offers you a number of useful message options (quick actions)"
 		},
 		"changeLog": {
-			"added": {
-				"Replies": "Added option for replies",
-				"Quotes": "Now requires CustomQuoter plugin since Discord replaces Quotes with Replies"
-			},
 			"fixed": {
-				"Settings": "Fixed Settings"
+				"Edit": "Trying to edit a message that is alsready being edited no longer resets the edit"
 			}
 		}
 	};
@@ -32,51 +28,55 @@ module.exports = (_ => {
 		getName () {return config.info.name;}
 		getAuthor () {return config.info.author;}
 		getVersion () {return config.info.version;}
-		getDescription () {return config.info.description;}
+		getDescription () {return `The Library Plugin needed for ${config.info.name} is missing. Open the Plugin Settings to download it. \n\n${config.info.description}`;}
 		
-		load() {
+		downloadLibrary () {
+			require("request").get("https://mwittrien.github.io/BetterDiscordAddons/Library/0BDFDB.plugin.js", (e, r, b) => {
+				if (!e && b && b.indexOf(`* @name BDFDB`) > -1) require("fs").writeFile(require("path").join(BdApi.Plugins.folder, "0BDFDB.plugin.js"), b, _ => BdApi.showToast("Finished downloading BDFDB Library", {type: "success"}));
+				else BdApi.alert("Error", "Could not download BDFDB Library Plugin, try again later or download it manually from GitHub: https://github.com/mwittrien/BetterDiscordAddons/tree/master/Library/");
+			});
+		}
+		
+		load () {
 			if (!window.BDFDB_Global || !Array.isArray(window.BDFDB_Global.pluginQueue)) window.BDFDB_Global = Object.assign({}, window.BDFDB_Global, {pluginQueue: []});
 			if (!window.BDFDB_Global.downloadModal) {
 				window.BDFDB_Global.downloadModal = true;
-				BdApi.showConfirmationModal("Library Missing", `The library plugin needed for ${config.info.name} is missing. Please click "Download Now" to install it.`, {
+				BdApi.showConfirmationModal("Library Missing", `The Library Plugin needed for ${config.info.name} is missing. Please click "Download Now" to install it.`, {
 					confirmText: "Download Now",
 					cancelText: "Cancel",
 					onCancel: _ => {delete window.BDFDB_Global.downloadModal;},
 					onConfirm: _ => {
 						delete window.BDFDB_Global.downloadModal;
-						require("request").get("https://mwittrien.github.io/BetterDiscordAddons/Library/0BDFDB.plugin.js", (e, r, b) => {
-							if (!e && b && b.indexOf(`* @name BDFDB`) > -1) require("fs").writeFile(require("path").join(BdApi.Plugins.folder, "0BDFDB.plugin.js"), b, _ => {});
-							else BdApi.alert("Error", "Could not download BDFDB library plugin, try again some time later.");
-						});
+						this.downloadLibrary();
 					}
 				});
 			}
 			if (!window.BDFDB_Global.pluginQueue.includes(config.info.name)) window.BDFDB_Global.pluginQueue.push(config.info.name);
 		}
-		start() {this.load();}
-		stop() {}
-		getSettingsPanel() {
+		start () {this.load();}
+		stop () {}
+		getSettingsPanel () {
 			let template = document.createElement("template");
-			template.innerHTML = `<div style="color: var(--header-primary); font-size: 16px; font-weight: 300; white-space: pre; line-height: 22px;">The library plugin needed for ${config.info.name} is missing.\nPlease click <a style="font-weight: 500;">Download Now</a> to install it.</div>`;
-			template.content.firstElementChild.querySelector("a").addEventListener("click", _ => {
-				require("request").get("https://mwittrien.github.io/BetterDiscordAddons/Library/0BDFDB.plugin.js", (e, r, b) => {
-					if (!e && b && b.indexOf(`* @name BDFDB`) > -1) require("fs").writeFile(require("path").join(BdApi.Plugins.folder, "0BDFDB.plugin.js"), b, _ => {});
-					else BdApi.alert("Error", "Could not download BDFDB library plugin, try again some time later.");
-				});
-			});
+			template.innerHTML = `<div style="color: var(--header-primary); font-size: 16px; font-weight: 300; white-space: pre; line-height: 22px;">The Library Plugin needed for ${config.info.name} is missing.\nPlease click <a style="font-weight: 500;">Download Now</a> to install it.</div>`;
+			template.content.firstElementChild.querySelector("a").addEventListener("click", this.downloadLibrary);
 			return template.content.firstElementChild;
 		}
 	} : (([Plugin, BDFDB]) => {
-		const clickMap = ["CLICK", "DBLCLICK"];
+		const clickMap = {
+			CLICK: 0,
+			DBLCLICK: 1
+		};
 		var firedEvents = [], clickTimeout;
 		var settings = {}, bindings = {}, enabledBindings = {}, toasts = {};
 		
+		var ChannelTextAreaForm;
+		
 		return class MessageUtilities extends Plugin {
-			onLoad() {
+			onLoad () {
 				this.defaults = {
 					settings: {
-						"addHints":					{value: true, 	description: "Add keycombo hints to contextmenus: "},
-						"clearOnEscape":			{value: true, 	description: "Clear chat input when Escape is pressed: "}
+						"addHints":					{value: true, 	description: "Add Key Combo hints to Context Menus"},
+						"clearOnEscape":			{value: true, 	description: "Clear Chat Input when Escape is pressed"}
 					},
 					toasts: {},
 					bindings: {
@@ -96,7 +96,9 @@ module.exports = (_ => {
 				
 				this.patchedModules = {
 					before: {
-						Menu: "default"
+						Menu: "default",
+						Message: "default",
+						ChannelTextAreaForm: "render"
 					}
 				};
 				
@@ -107,21 +109,15 @@ module.exports = (_ => {
 				}
 			}
 			
-			onStart() {
-				BDFDB.ListenerUtils.add(this, document, "click", BDFDB.dotCNC.message + BDFDB.dotCN.searchresultsgroupcozy, e => {
-					if (!BDFDB.DOMUtils.getParent(BDFDB.dotCN.messagetoolbarbutton, e.target)) this.onClick(e, 0, "onSglClick");
-				});
-				BDFDB.ListenerUtils.add(this, document, "dblclick", BDFDB.dotCNC.message + BDFDB.dotCN.searchresultsgroupcozy, e => {
-					if (!BDFDB.DOMUtils.getParent(BDFDB.dotCN.messagetoolbarbutton, e.target)) this.onClick(e, 1, "onDblClick");
-				});
-				BDFDB.ListenerUtils.add(this, document, "keydown", e => {
-					if (BDFDB.DOMUtils.getParent(BDFDB.dotCN.textareawrapchat, document.activeElement)) this.onKeyDown(document.activeElement, e.which, "onKeyDown");
+			onStart () {
+				BDFDB.ListenerUtils.add(this, document, "keydown", event => {
+					if (BDFDB.DOMUtils.getParent(BDFDB.dotCN.textareawrapchat, document.activeElement)) this.onKeyDown(event);
 				});
 				
 				this.forceUpdateAll();
 			}
 			
-			onStop() {
+			onStop () {
 				this.forceUpdateAll();
 			}
 
@@ -132,81 +128,98 @@ module.exports = (_ => {
 					children: _ => {
 						let settingsItems = [];
 						
-						for (let key in settings) if (this.defaults.settings[key].description) settingsItems.push(BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsSaveItem, {
-							type: "Switch",
-							plugin: this,
-							keys: ["settings", key],
-							label: this.defaults.settings[key].description,
-							value: settings[key]
-						}));
-						settingsItems.push(BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.FormComponents.FormDivider, {
-							className: BDFDB.disCN.marginbottom8
-						}));
-						for (let action in bindings) if (!this.defaults.bindings[action].plugin || BDFDB.BDUtils.isPluginEnabled(this.defaults.bindings[action].plugin)) {
-							settingsItems.push(BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.Flex, {
-								className: BDFDB.disCN.marginbottom8,
-								align: BDFDB.LibraryComponents.Flex.Align.CENTER,
-								direction: BDFDB.LibraryComponents.Flex.Direction.HORIZONTAL,
-								children: [
-									BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsLabel, {
-										label: this.defaults.bindings[action].name + (this.defaults.bindings[action].plugin ? ` (${this.defaults.bindings[action].plugin})` : "")
-									}),
-									toasts[action] != undefined ? BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsSaveItem, {
-										type: "Switch",
-										mini: true,
-										plugin: this,
-										keys: ["toasts", action],
-										grow: 0,
-										label: "Toast:",
-										value: toasts[action]
-									}) : null
-								].filter(n => n)
-							}));
-							settingsItems.push(BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsSaveItem, {
+						settingsItems.push(BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.CollapseContainer, {
+							title: "Settings",
+							collapseStates: collapseStates,
+							children: Object.keys(settings).map(key => this.defaults.settings[key].description && BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsSaveItem, {
 								type: "Switch",
-								dividerBottom: true,
-								mini: true,
 								plugin: this,
-								keys: ["settings", action],
-								value: settings[action],
-								labelchildren: BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.Flex, {
-									direction: BDFDB.LibraryComponents.Flex.Direction.HORIZONTAL,
+								keys: ["settings", key],
+								label: this.defaults.settings[key].description,
+								value: settings[key]
+							}))
+						}));
+						settingsItems.push(BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.CollapseContainer, {
+							title: "Actions",
+							collapseStates: collapseStates,
+							children: Object.keys(bindings).map(action => {
+								if (this.defaults.bindings[action].plugin && !BDFDB.BDUtils.isPluginEnabled(this.defaults.bindings[action].plugin)) return null;
+								let keyRecorderIns, clickSelectorIns;
+								return BDFDB.ReactUtils.createElement("div", {
+									className: BDFDB.disCN.marginbottom20,
 									children: [
-										BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.KeybindRecorder, {
-											defaultValue: bindings[action].keycombo.filter(n => n),
-											reset: true,
-											onChange: keycombo => {
-												bindings[action].keycombo = keycombo;
-												BDFDB.DataUtils.save(bindings, this, "bindings");
-												this.SettingsUpdated = true;
-											}
+										BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.Flex, {
+											className: BDFDB.disCN.marginbottom8,
+											align: BDFDB.LibraryComponents.Flex.Align.CENTER,
+											direction: BDFDB.LibraryComponents.Flex.Direction.HORIZONTAL,
+											children: [
+												BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsLabel, {
+													label: this.defaults.bindings[action].name + (this.defaults.bindings[action].plugin ? ` (${this.defaults.bindings[action].plugin})` : "")
+												}),
+												toasts[action] != undefined ? BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsSaveItem, {
+													type: "Switch",
+													mini: true,
+													plugin: this,
+													keys: ["toasts", action],
+													grow: 0,
+													label: "Show Confirmation Toast:",
+													value: toasts[action]
+												}) : null
+											].filter(n => n)
 										}),
-										BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.Select, {
-											value: bindings[action].click,
-											options: clickMap.map((label, i) => {return {value: i, label: label}}),
-											onChange: choice => {
-												bindings[action].click = choice.value;
-												BDFDB.DataUtils.save(bindings, this, "bindings");
-												this.SettingsUpdated = true;
-											}
+										BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsSaveItem, {
+											type: "Switch",
+											plugin: this,
+											keys: ["settings", action],
+											value: settings[action],
+											onChange: value => {
+												keyRecorderIns.props.disabled = !value;
+												clickSelectorIns.props.disabled = !value;
+												BDFDB.ReactUtils.forceUpdate(keyRecorderIns, clickSelectorIns);
+											},
+											labelChildren: BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.Flex, {
+												direction: BDFDB.LibraryComponents.Flex.Direction.HORIZONTAL,
+												children: [
+													BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.KeybindRecorder, {
+														defaultValue: bindings[action].keycombo.filter(n => n),
+														reset: true,
+														disabled: !settings[action],
+														ref: instance => {if (instance) keyRecorderIns = instance;},
+														onChange: keyCombo => {
+															bindings[action].keycombo = keyCombo;
+															BDFDB.DataUtils.save(bindings, this, "bindings");
+															this.SettingsUpdated = true;
+														}
+													}),
+													BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.Select, {
+														value: bindings[action].click,
+														options: Object.keys(clickMap).map((label, i) => ({value: i, label: label})),
+														disabled: !settings[action],
+														ref: instance => {if (instance) clickSelectorIns = instance;},
+														onChange: choice => {
+															bindings[action].click = choice.value;
+															BDFDB.DataUtils.save(bindings, this, "bindings");
+															this.SettingsUpdated = true;
+														}
+													})
+												]
+											})
 										})
 									]
-								})
-							}));
-						}
-						settingsItems.push(BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsItem, {
-							type: "Button",
-							color: BDFDB.LibraryComponents.Button.Colors.RED,
-							label: "Reset all Key Bindings",
-							onClick: (e, instance) => {
-								BDFDB.ModalUtils.confirm(this, "Are you sure you want to reset all Key Bindings?", _ => {
-									BDFDB.DataUtils.remove(this, "bindings");
-									settingsPanel.parentElement.appendChild(this.getSettingsPanel());
-									settingsPanel.remove();
-									this.SettingsUpdated = true;
 								});
-							},
-							children: BDFDB.LanguageUtils.LanguageStrings.RESET
+							}).concat(BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsItem, {
+								type: "Button",
+								color: BDFDB.LibraryComponents.Button.Colors.RED,
+								label: "Reset all Key Bindings",
+								onClick: _ => {
+									BDFDB.ModalUtils.confirm(this, "Are you sure you want to reset all Key Bindings?", _ => {
+										BDFDB.DataUtils.remove(this, "bindings");
+										BDFDB.PluginUtils.refreshSettingsPanel(this, settingsPanel, collapseStates);
+										this.SettingsUpdated = true;
+									});
+								},
+								children: BDFDB.LanguageUtils.LanguageStrings.RESET
+							}))
 						}));
 						
 						return settingsItems;
@@ -227,16 +240,17 @@ module.exports = (_ => {
 				enabledBindings = BDFDB.ObjectUtils.filter(bindings, action => settings[action], true);
 				toasts = BDFDB.DataUtils.get(this, "toasts");
 				
+				BDFDB.MessageUtils.rerenderAll();
 				BDFDB.PatchUtils.forceAllUpdates(this);
 			}
-		
+			
 			processMenu (e) {
 				let contextMenu = BDFDB.ReactUtils.findChild(e.instance, {props: "navId"});
 				if (contextMenu && BDFDB.ArrayUtils.is(contextMenu.props.children)) for (let group of contextMenu.props.children) {
 					if (group && group.type == BDFDB.LibraryComponents.MenuItems.MenuGroup && BDFDB.ArrayUtils.is(group.props.children)) for (let item of group.props.children) {
 						if (item && item.props && item.props.id && !item.props.hint && !item.props.children) {
 							let hint, action;
-							if (item.props.id == "mark-unread") hint = settings.addHints && `${BDFDB.LibraryModules.KeyCodeUtils.getString(18)}+${clickMap[0]}`;
+							if (item.props.id == "mark-unread") hint = settings.addHints && `${BDFDB.LibraryModules.KeyCodeUtils.getString(18)}+${clickMap.CLICK}`;
 							else {
 								switch (item.props.id) {
 									case "copy-link":
@@ -267,20 +281,45 @@ module.exports = (_ => {
 					}
 				}
 			}
+		
+			processMessage (e) {
+				let message;
+				for (let key in e.instance.props) {
+					if (!message) message = BDFDB.ObjectUtils.get(e.instance.props[key], "props.message");
+					else break;
+				}
+				if (message) {
+					let props = Object.assign({}, e.instance.props);
+					e.instance.props.onClick = event => {
+						this.onClick(event, message);
+						if (typeof props.onClick == "function") props.onClick(event);
+					};
+					e.instance.props.onDoubleClick = event => {
+						this.onClick(event, message);
+						if (typeof props.onDoubleClick == "function") props.onDoubleClick(event);
+					};
+				}
+			}
+		
+			processChannelTextAreaForm (e) {
+				ChannelTextAreaForm = e.instance;
+			}
 
-			onClick (e, click, name) {
-				if (!firedEvents.includes(name)) {
-					firedEvents.push(name);
+			onClick (event, message) {
+				let type = event.type;
+				if (!firedEvents.includes(type)) {
+					firedEvents.push(type);
 					let priorityAction = null;
+					let clickType = clickMap[type.toUpperCase()];
 					for (let action in enabledBindings) {
 						let binding = enabledBindings[action];
 						let priorityBinding = enabledBindings[priorityAction];
-						if (this.checkIfBindingIsValid(binding, click) && (!enabledBindings[priorityAction] || binding.click > priorityBinding.click || binding.keycombo.length > priorityBinding.keycombo.length)) priorityAction = action;
+						if (this.checkIfBindingIsValid(binding, clickType) && (!enabledBindings[priorityAction] || binding.click > priorityBinding.click || binding.keycombo.length > priorityBinding.keycombo.length)) priorityAction = action;
 					}
 					if (priorityAction) {
-						let {messageDiv, message} = this.getMessageData(e.currentTarget);
-						if (messageDiv && message) {
-							BDFDB.ListenerUtils.stopEvent(e);
+						let messageDiv = BDFDB.DOMUtils.getParent(BDFDB.dotCNC.message + BDFDB.dotCN.searchresultsmessage, event.target);
+						if (messageDiv) {
+							BDFDB.ListenerUtils.stopEvent(event);
 							BDFDB.TimeUtils.clear(clickTimeout);
 							if (!this.hasDoubleClickOverwrite(enabledBindings[priorityAction])) {
 								this.defaults.bindings[priorityAction].func.apply(this, [{messageDiv, message}, priorityAction]);
@@ -290,19 +329,29 @@ module.exports = (_ => {
 							}, 500);
 						}
 					}
-					BDFDB.TimeUtils.timeout(_ => {BDFDB.ArrayUtils.remove(firedEvents, name, true)});
+					BDFDB.TimeUtils.timeout(_ => {BDFDB.ArrayUtils.remove(firedEvents, type, true)});
 				}
 			}
 
-			checkIfBindingIsValid (binding, doneclick) {
-				if (binding.click != doneclick) return false;
+			onKeyDown (event) {
+				let type = event.type;
+				if (!firedEvents.includes(type)) {
+					if (event.which == 27 && settings.clearOnEscape && ChannelTextAreaForm) {
+						ChannelTextAreaForm.setState({textValue: "", richValue: BDFDB.LibraryModules.SlateUtils.deserialize("")});
+					}
+					BDFDB.TimeUtils.timeout(_ => {BDFDB.ArrayUtils.remove(firedEvents, type, true)});
+				}
+			}
+
+			checkIfBindingIsValid (binding, clickType) {
+				if (binding.click != clickType) return false;
 				for (let key of binding.keycombo) if (!BDFDB.ListenerUtils.isPressed(key)) return false;
 				return true;
 			}
 
 			hasDoubleClickOverwrite (binding) {
-				if (binding.click == 1) return false;
-				let dblBindings = BDFDB.ObjectUtils.filter(enabledBindings, bndg => {return bndg.click == 1});
+				if (binding.click == clickMap.DBLCLICK) return false;
+				let dblBindings = BDFDB.ObjectUtils.filter(enabledBindings, bndg => bndg.click == clickMap.DBLCLICK);
 				for (let dblAction in dblBindings) {
 					let dblBinding = dblBindings[dblAction];
 					let overwrite = true;
@@ -317,16 +366,16 @@ module.exports = (_ => {
 				else {
 					let channel = BDFDB.LibraryModules.ChannelStore.getChannel(message.channel_id);
 					if ((channel && BDFDB.UserUtils.can("MANAGE_MESSAGES")) || message.author.id == BDFDB.UserUtils.me.id && message.type != 1 && message.type != 2 && message.type != 3) {
-						BDFDB.LibraryModules.MessageUtils.deleteMessage(message.channel_id, message.id, message.state != "SENT");
-						if (toasts[action]) BDFDB.NotificationUtils.toast("Message has been deleted", {type: "success"});
+						BDFDB.LibraryModules.MessageUtils.deleteMessage(message.channel_id, message.id, message.state != BDFDB.DiscordConstants.MessageStates.SENT);
+						if (toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.GUILD_SETTINGS_FOLLOWER_ANALYTICS_MESSAGE_DELETED), {type: "success"});
 					}
 				}
 			}
 
 			doEdit ({messageDiv, message}, action) {
-				if (message.author.id == BDFDB.UserUtils.me.id && !messageDiv.querySelector("textarea")) {
+				if (message.author.id == BDFDB.UserUtils.me.id && !messageDiv.querySelector(BDFDB.dotCN.messagechanneltextarea)) {
 					BDFDB.LibraryModules.MessageUtils.startEditMessage(message.channel_id, message.id, message.content);
-					if (toasts[action]) BDFDB.NotificationUtils.toast("Started editing.", {type: "success"});
+					if (toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.EDITING_MESSAGE), {type: "success"});
 				}
 			}
 
@@ -334,32 +383,32 @@ module.exports = (_ => {
 				let reactButton = messageDiv.querySelector(`${BDFDB.dotCN.messagetoolbarbutton}[aria-label="${BDFDB.LanguageUtils.LanguageStrings.ADD_REACTION}"]`);
 				if (reactButton) {
 					reactButton.click();
-					if (toasts[action]) BDFDB.NotificationUtils.toast("Reaction popout has been opened", {type: "success"});
+					if (toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.ADD_REACTIONS), {type: "success"});
 				}
 			}
 
 			doPinUnPin ({messageDiv, message}, action) {
-				if (message.state == "SENT") {
+				if (message.state == BDFDB.DiscordConstants.MessageStates.SENT) {
 					let channel = BDFDB.LibraryModules.ChannelStore.getChannel(message.channel_id);
-					if (channel && (channel.type == 1 || channel.type == 3 || BDFDB.UserUtils.can("MANAGE_MESSAGES")) && message.type == 0) {
+					if (channel && (BDFDB.DMUtils.isDMChannel(channel.id) || BDFDB.UserUtils.can("MANAGE_MESSAGES")) && message.type == BDFDB.DiscordConstants.MessageTypes.DEFAULT) {
 						if (message.pinned) {
 							BDFDB.LibraryModules.MessagePinUtils.unpinMessage(channel, message.id);
-							if (toasts[action]) BDFDB.NotificationUtils.toast("Message has been unpinned", {type: "error"});
+							if (toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.MESSAGE_UNPINNED), {type: "danger"});
 						}
 						else {
 							BDFDB.LibraryModules.MessagePinUtils.pinMessage(channel, message.id);
-							if (toasts[action]) BDFDB.NotificationUtils.toast("Message has been pinned", {type: "success"});
+							if (toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.MESSAGE_PINNED), {type: "success"});
 						}
 					}
 				}
 			}
 			
 			doReply ({messageDiv, message}, action) {
-				if (message.state == "SENT") {
+				if (message.state == BDFDB.DiscordConstants.MessageStates.SENT) {
 					let channel = BDFDB.LibraryModules.ChannelStore.getChannel(message.channel_id);
-					if (channel && (BDFDB.DMUtils.isDMChannel(channel) || BDFDB.UserUtils.can("SEND_MESSAGES")) && message.type == 0) {
+					if (channel && (BDFDB.DMUtils.isDMChannel(channel.id) || BDFDB.UserUtils.can("SEND_MESSAGES")) && message.type == BDFDB.DiscordConstants.MessageTypes.DEFAULT) {
 						BDFDB.LibraryModules.MessageManageUtils.replyToMessage(channel, message);
-						if (toasts[action]) BDFDB.NotificationUtils.toast("Added reply to message", {type: "success"});
+						if (toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.NOTIFICATION_REPLY), {type: "success"});
 					}
 				}
 			}
@@ -367,7 +416,7 @@ module.exports = (_ => {
 			doCopyRaw ({messageDiv, message}, action) {
 				if (message.content) {
 					BDFDB.LibraryRequires.electron.clipboard.write({text: message.content});
-					if (toasts[action]) BDFDB.NotificationUtils.toast("Raw message content has been copied", {type: "success"});
+					if (toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.COPIED_TEXT), {type: "success"});
 				}
 			}
 
@@ -375,7 +424,7 @@ module.exports = (_ => {
 				let channel = BDFDB.LibraryModules.ChannelStore.getChannel(message.channel_id);
 				if (channel) {
 					BDFDB.LibraryModules.MessageManageUtils.copyLink(channel, message);
-					if (toasts[action]) BDFDB.NotificationUtils.toast("Messagelink has been copied", {type: "success"});
+					if (toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.LINK_COPIED), {type: "success"});
 				}
 			}
 
@@ -405,19 +454,9 @@ module.exports = (_ => {
 					BDFDB.BDUtils.getPlugin(this.defaults.bindings.__Reveal_Spoilers.plugin).revealAllSpoilers(messageDiv);
 				}
 			}
-
-			onKeyDown (target, key, name) {
-				if (!firedEvents.includes(name)) {
-					firedEvents.push(name);
-					if (key == 27 && settings.clearOnEscape) {
-						let chatform = BDFDB.DOMUtils.getParent(BDFDB.dotCN.chatform, target);
-						if (chatform) {
-							let instance = BDFDB.ReactUtils.findOwner(chatform, {name: "ChannelTextAreaForm"}) || BDFDB.ReactUtils.findOwner(chatform, {name: "ChannelTextAreaForm", up: true});
-							if (instance) instance.setState({textValue: "", richValue: BDFDB.LibraryModules.SlateUtils.deserialize("")});
-						}
-					}
-					BDFDB.TimeUtils.timeout(_ => {BDFDB.ArrayUtils.remove(firedEvents, name, true)});
-				}
+			
+			formatToast (string) {
+				return typeof string == "string" ? (string.endsWith(".") || string.endsWith("!") ? string.slice(0, -1) : string) : "";
 			}
 
 			getActiveShortcutString (action) {
@@ -425,17 +464,9 @@ module.exports = (_ => {
 				let str = [];
 				if (settings.addHints && settings[action] && enabledBindings[action]) {
 					if (enabledBindings[action].keycombo.length) str.push(BDFDB.LibraryModules.KeyCodeUtils.getString(enabledBindings[action].keycombo));
-					str.push(clickMap[enabledBindings[action].click]);
+					str.push(Object.keys(clickMap).find(type => clickMap[type] == enabledBindings[action].click));
 				}
 				return str.join("+").replace(/ /g, "");
-			}
-
-			getMessageData (target) {
-				let messageDiv = BDFDB.DOMUtils.getParent(BDFDB.dotCNC.message + BDFDB.dotCN.searchresultsgroupcozy, target);
-				if (messageDiv && messageDiv.querySelector(BDFDB.dotCN.textarea)) return {messageDiv: null, message: null};
-				let instance = BDFDB.ReactUtils.getInstance(messageDiv);
-				let message = instance && (BDFDB.ReactUtils.findValue(instance, "baseMessage") || BDFDB.ReactUtils.findValue(instance, "message"));
-				return {messageDiv, message};
 			}
 		};
 	})(window.BDFDB_Global.PluginUtils.buildPlugin(config));
