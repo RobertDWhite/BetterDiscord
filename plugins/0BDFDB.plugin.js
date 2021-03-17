@@ -2,11 +2,7 @@
  * @name BDFDB
  * @author DevilBro
  * @authorId 278543574059057154
-<<<<<<< HEAD
- * @version 1.4.7
-=======
- * @version 1.4.5
->>>>>>> c6fe000c5c93a37686c90e7962847d393d375812
+ * @version 1.4.8
  * @description Required Library for DevilBro's Plugins
  * @invite Jx3TjNS
  * @donate https://www.paypal.me/MircoWittrien
@@ -26,22 +22,18 @@ module.exports = (_ => {
 		"info": {
 			"name": "BDFDB",
 			"author": "DevilBro",
-<<<<<<< HEAD
-			"version": "1.4.7",
+			"version": "1.4.8",
 			"description": "Required Library for DevilBro's Plugins"
 		},
 		"rawUrl": `https://mwittrien.github.io/BetterDiscordAddons/Library/0BDFDB.plugin.js`,
 		"changeLog": {
 			"added": {
 				"Date Input Component": "Added new Internal Component for Plugins like CreationDate, CompleteTimestamps etc."
+			},
+			"fixed": {
+				"Date Input Component 12h Mode": ""
 			}
 		}
-=======
-			"version": "1.4.5",
-			"description": "Required Library for DevilBro's Plugins"
-		},
-		"rawUrl": `https://mwittrien.github.io/BetterDiscordAddons/Library/0BDFDB.plugin.js`
->>>>>>> c6fe000c5c93a37686c90e7962847d393d375812
 	};
 	
 	const DiscordObjects = {};
@@ -3930,67 +3922,6 @@ module.exports = (_ => {
 					}
 					else return original;
 				};
-				BDFDB.StringUtils.formatTime = function (time, config = {}) {
-					let timeObj = time || new Date();
-					if (typeof time == "string" || typeof time == "number") timeObj = new Date(time);
-					if (timeObj.toString() == "Invalid Date") timeObj = new Date(parseInt(time));
-					if (timeObj.toString() == "Invalid Date" || typeof timeObj.toLocaleDateString != "function") return "";
-					
-					let languageId = config.language && BDFDB.LanguageUtils.languages[config.language] ? config.language : BDFDB.LanguageUtils.getLanguage().id, timeString = "";
-					if (!config.formatString || typeof config.formatString != "string") {
-						const cutOffSeconds = string => {
-							return string.replace(/(.{1,2}:.{1,2}):.{1,2}(.*)/, "$1$2").replace(/(.{1,2}\..{1,2})\..{1,2}(.*)/, "$1$2").replace(/(.{1,2} h .{1,2} min) .{1,2} s(.*)/, "$1$2");
-						};
-						const addLeadingZeros = string => {
-							let charArray = string.split("");
-							let numReg = /[0-9]/;
-							for (let i = 0; i < charArray.length; i++) if (!numReg.test(charArray[i-1]) && numReg.test(charArray[i]) && !numReg.test(charArray[i+1])) charArray[i] = "0" + charArray[i];
-							return charArray.join("");
-						};
-						let timestamp = [];
-						if (config.displayDate) timestamp.push(timeObj.toLocaleDateString(languageId));
-						if (config.displayTime) timestamp.push(config.cutSeconds ? cutOffSeconds(timeObj.toLocaleTimeString(languageId)) : timeObj.toLocaleTimeString(languageId));
-						if (config.otherOrder) timestamp.reverse();
-						timeString = timestamp.length > 1 ? timestamp.join(", ") : (timestamp.length > 0 ? timestamp[0] : "");
-						if (timeString && config.forceZeros) timeString = addLeadingZeros(timeString);
-					}
-					else {
-						let hours = timeObj.getHours();
-						let minutes = timeObj.getMinutes();
-						let seconds = timeObj.getSeconds();
-						let milliSeconds = timeObj.getMilliseconds();
-						
-						let day = timeObj.getDate();
-						let month = timeObj.getMonth()+1;
-						
-						let timeMode = "";
-						let now = new Date();
-						let daysAgo = Math.round((Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - Date.UTC(timeObj.getFullYear(), timeObj.getMonth(), timeObj.getDate()))/(1000*60*60*24));
-						
-						if (config.formatString.indexOf("$timemode") > -1) {
-							timeMode = hours >= 12 ? "PM" : "AM";
-							hours = hours % 12;
-							hours = hours ? hours : 12;
-						}
-						timeString = BDFDB.LibraryModules.StringUtils.upperCaseFirstChar(config.formatString
-							.replace(/\$hour/g, config.forceZeros && hours < 10 ? "0" + hours : hours)
-							.replace(/\$minute/g, minutes < 10 ? "0" + minutes : minutes)
-							.replace(/\$second/g, seconds < 10 ? "0" + seconds : seconds)
-							.replace(/\$msecond/g, config.forceZeros ? (milliSeconds < 10 ? "00" + milliSeconds : (milliSeconds < 100 ? "0" + milliSeconds : milliSeconds)) : milliSeconds)
-							.replace(/\$timemode/g, timeMode)
-							.replace(/\$weekdayL/g, timeObj.toLocaleDateString(languageId, {weekday: "long"}))
-							.replace(/\$weekdayS/g, timeObj.toLocaleDateString(languageId, {weekday: "short"}))
-							.replace(/\$monthnameL/g, timeObj.toLocaleDateString(languageId, {month: "long"}))
-							.replace(/\$monthnameS/g, timeObj.toLocaleDateString(languageId, {month: "short"}))
-							.replace(/\$daysago/g, config.maxDaysAgo == 0 || config.maxDaysAgo >= daysAgo ? (daysAgo > 1 ? (config.useDateInDaysAgo ? timeObj.toLocaleDateString(languageId) : BDFDB.LanguageUtils.LanguageStringsFormat("ACTIVITY_FEED_USER_PLAYED_DAYS_AGO", daysAgo)) : BDFDB.LanguageUtils.LanguageStrings[`SEARCH_SHORTCUT_${daysAgo == 1 ? "YESTERDAY" : "TODAY"}`]) : "")
-							.replace(/\$day/g, config.forceZeros && day < 10 ? "0" + day : day)
-							.replace(/\$month/g, config.forceZeros && month < 10 ? "0" + month : month)
-							.replace(/\$yearS/g, parseInt(timeObj.getFullYear().toString().slice(-2)))
-							.replace(/\$year/g, timeObj.getFullYear())
-							.trim().split(" ").filter(n => n).join(" "));
-					}
-					return timeString;
-				};
 				
 				BDFDB.SlateUtils = {};
 				BDFDB.SlateUtils.isRichValue = function (richValue) {
@@ -5507,21 +5438,12 @@ module.exports = (_ => {
 							disabled: props.isDisabled,
 							onClick: _ => {
 								if (!props.isSelected) {
-<<<<<<< HEAD
 									let color = props.isCustom && props.color == null ? (swatches.props.color || "rgba(0, 0, 0, 1)") : props.color;
 									if (typeof swatches.props.onColorChange == "function") swatches.props.onColorChange(BDFDB.ColorUtils.convert(color, "RGBCOMP"));
 									swatches.props.color = color;
 									swatches.props.customColor = props.isCustom ? color : swatches.props.customColor;
 									swatches.props.customSelected = props.isCustom;
 									BDFDB.ReactUtils.forceUpdate(swatches);
-=======
-									let color = props.isCustom && props.color == null ? (props.swatches.props.color || "rgba(0, 0, 0, 1)") : props.color;
-									if (typeof props.swatches.props.onColorChange == "function") props.swatches.props.onColorChange(BDFDB.ColorUtils.convert(color, "RGBCOMP"));
-									props.swatches.props.color = color;
-									props.swatches.props.customColor = props.isCustom ? color : props.swatches.props.customColor;
-									props.swatches.props.customSelected = props.isCustom;
-									BDFDB.ReactUtils.forceUpdate(props.swatches);
->>>>>>> c6fe000c5c93a37686c90e7962847d393d375812
 								}
 							},
 							style: Object.assign({}, props.style, {
@@ -5556,7 +5478,6 @@ module.exports = (_ => {
 							animation: InternalComponents.LibraryComponents.PopoutContainer.Animation.TRANSLATE,
 							position: InternalComponents.LibraryComponents.PopoutContainer.Positions.BOTTOM,
 							align: InternalComponents.LibraryComponents.PopoutContainer.Align.CENTER,
-<<<<<<< HEAD
 							renderPopout: _ => BDFDB.ReactUtils.createElement(InternalComponents.LibraryComponents.ColorPicker, Object.assign({}, swatches.props.pickerConfig, {
 								color: swatches.props.color,
 								onColorChange: color => {
@@ -5570,23 +5491,6 @@ module.exports = (_ => {
 									BDFDB.ReactUtils.forceUpdate(swatches);
 								}
 							}), true)
-=======
-							renderPopout: _ => {
-								return BDFDB.ReactUtils.createElement(InternalComponents.LibraryComponents.ColorPicker, Object.assign({}, props.pickerConfig, {
-									color: props.swatches.props.color,
-									onColorChange: color => {
-										let comp = BDFDB.ColorUtils.convert(color, "RGBCOMP");
-										if (typeof props.swatches.props.onColorChange == "function") props.swatches.props.onColorChange(comp);
-										if (props.pickerConfig && typeof props.pickerConfig.onColorChange == "function") props.pickerConfig.onColorChange(comp);
-										props.color = color;
-										props.swatches.props.color = color;
-										props.swatches.props.customColor = color;
-										props.swatches.props.customSelected = true;
-										BDFDB.ReactUtils.forceUpdate(props.swatches);
-									}
-								}), true);
-							}
->>>>>>> c6fe000c5c93a37686c90e7962847d393d375812
 						});
 						if (props.isCustom) swatch = BDFDB.ReactUtils.createElement("div", {
 							className: BDFDB.disCN.colorpickerswatchcustomcontainer,
@@ -5598,7 +5502,6 @@ module.exports = (_ => {
 						return BDFDB.ReactUtils.createElement(InternalComponents.LibraryComponents.Flex, {
 							className: BDFDB.disCN.colorpickerrow,
 							wrap: InternalComponents.LibraryComponents.Flex.Wrap.WRAP,
-<<<<<<< HEAD
 							children: colors.map(color => BDFDB.ReactUtils.createElement(this.ColorSwatch, {
 								swatches: this,
 								color: color,
@@ -5606,17 +5509,6 @@ module.exports = (_ => {
 								isSelected: !this.props.customSelected && color == this.props.color,
 								isDisabled: this.props.disabled
 							}))
-=======
-							children: colors.map(color => {
-								return BDFDB.ReactUtils.createElement(this.ColorSwatch, {
-									swatches: this,
-									color: color,
-									isCustom: false,
-									isSelected: !this.props.customSelected && color == this.props.color,
-									isDisabled: this.props.disabled
-								})
-							})
->>>>>>> c6fe000c5c93a37686c90e7962847d393d375812
 						});
 					}
 					render() {
