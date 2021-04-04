@@ -2,7 +2,7 @@
  * @name BDFDB
  * @author DevilBro
  * @authorId 278543574059057154
- * @version 1.5.0
+ * @version 1.5.2
  * @description Required Library for DevilBro's Plugins
  * @invite Jx3TjNS
  * @donate https://www.paypal.me/MircoWittrien
@@ -22,15 +22,10 @@ module.exports = (_ => {
 		"info": {
 			"name": "BDFDB",
 			"author": "DevilBro",
-			"version": "1.5.0",
+			"version": "1.5.2",
 			"description": "Required Library for DevilBro's Plugins"
 		},
-		"rawUrl": `https://mwittrien.github.io/BetterDiscordAddons/Library/0BDFDB.plugin.js`,
-		"changeLog": {
-			"improved": {
-				"Select Component": "Switched the old Dropdown Select Component with Discord's New Version"
-			}
-		}
+		"rawUrl": `https://mwittrien.github.io/BetterDiscordAddons/Library/0BDFDB.plugin.js`
 	};
 	
 	const DiscordObjects = {};
@@ -66,7 +61,7 @@ module.exports = (_ => {
 				},
 				useChromium: {
 					value: false,
-					isDisabled: data => !LibraryRequires.electron || !LibraryRequires.electron.remote,
+					isHidden: data => !LibraryRequires.electron || !LibraryRequires.electron.remote,
 					getValue: data => !data.disabled
 				}
 			},
@@ -475,8 +470,9 @@ module.exports = (_ => {
 		if (BdApi && !hasToBeEnabled || BDFDB.BDUtils.isPluginEnabled(pluginName)) {	
 			if (BdApi.Plugins && typeof BdApi.Plugins.get == "function") {
 				let plugin = BdApi.Plugins.get(pluginName);
-				if (overHead) return plugin ? {filename: LibraryRequires.fs.existsSync(LibraryRequires.path.join(BDFDB.BDUtils.getPluginsFolder(), `${pluginName}.plugin.js`)) ? `${pluginName}.plugin.js` : null, id: pluginName, name: pluginName, plugin: plugin} : null;
-				else return plugin;
+				if (!plugin) return null;
+				if (overHead) return plugin.filename && plugin.exports && plugin.instance ? plugin : {filename: LibraryRequires.fs.existsSync(LibraryRequires.path.join(BDFDB.BDUtils.getPluginsFolder(), `${pluginName}.plugin.js`)) ? `${pluginName}.plugin.js` : null, id: pluginName, name: pluginName, plugin: plugin};
+				else return plugin.filename && plugin.exports && plugin.instance ? plugin.instance : plugin;
 			}
 			else if (window.bdplugins) overHead ? window.bdplugins[pluginName] : (window.bdplugins[pluginName] || {}).plugin;
 		}
@@ -1555,26 +1551,20 @@ module.exports = (_ => {
 					else BDFDB.DOMUtils.addClass(tooltip, BDFDB.disCN.tooltipprimary);
 					
 					if (config.list || BDFDB.ObjectUtils.is(config.guild)) BDFDB.DOMUtils.addClass(tooltip, BDFDB.disCN.tooltiplistitem);
-
-					let mouseMove = e => {
-						let parent = e.target.parentElement.querySelector(":hover");
-						if (parent && anker != parent && !anker.contains(parent)) itemLayer.removeTooltip();
+					
+					const removeTooltip = _ => {
+						document.removeEventListener("mousemove", mouseMove);
+						document.removeEventListener("mouseleave", mouseLeave);
+						BDFDB.DOMUtils.remove(itemLayer);
+						BDFDB.ArrayUtils.remove(Tooltips, id);
+						observer.disconnect();
+						if (zIndexed) BDFDB.DOMUtils.removeClass(itemLayerContainer, BDFDB.disCN.itemlayercontainerzindexdisabled);
+						if (typeof config.onHide == "function") config.onHide(itemLayer, anker);
 					};
-					let mouseLeave = e => itemLayer.removeTooltip();
-					if (!config.perssist) {
-						document.addEventListener("mousemove", mouseMove);
-						document.addEventListener("mouseleave", mouseLeave);
-					}
-					
-					let observer = new MutationObserver(changes => changes.forEach(change => {
-						let nodes = Array.from(change.removedNodes);
-						if (nodes.indexOf(itemLayer) > -1 || nodes.indexOf(anker) > -1 || nodes.some(n => n.contains(anker))) itemLayer.removeTooltip();
-					}));
-					observer.observe(document.body, {subtree: true, childList: true});
-					
-					(tooltip.setText = itemLayer.setText = newText => {
+					const setText = newText => {
 						if (BDFDB.ObjectUtils.is(config.guild)) {
-							let voiceChannels = LibraryModules.GuildChannelStore.getChannels(config.guild.id)[BDFDB.DiscordConstants.ChannelTypes.GUILD_VOICE].map(c => c.channel.id);
+							let channels = LibraryModules.GuildChannelStore.getChannels(config.guild.id);
+							let voiceChannels = (channels[BDFDB.DiscordConstants.ChannelTypes.GUILD_VOICE] || channels.VOCAL || []).map(c => c.channel.id);
 							let streamOwnerIds = LibraryModules.StreamUtils.getAllApplicationStreams().filter(app => app.guildId === config.guild.id).map(app => app.ownerId) || [];
 							let streamOwners = streamOwnerIds.map(ownerId => LibraryModules.UserStore.getUser(ownerId)).filter(n => n);
 							let connectedUsers = BDFDB.ObjectUtils.toArray(LibraryModules.VoiceUtils.getVoiceStates(config.guild.id)).map(state => voiceChannels.includes(state.channelId) && state.channelId != config.guild.afkChannelId && !streamOwnerIds.includes(state.userId) && LibraryModules.UserStore.getUser(state.userId)).filter(n => n);
@@ -1648,18 +1638,9 @@ module.exports = (_ => {
 							else if (config.html) tooltipContent.innerHTML = newText;
 							else tooltipContent.innerText = newText;
 						}
-					})(text);
-					(tooltip.removeTooltip = itemLayer.removeTooltip = _ => {
-						document.removeEventListener("mousemove", mouseMove);
-						document.removeEventListener("mouseleave", mouseLeave);
-						BDFDB.DOMUtils.remove(itemLayer);
-						BDFDB.ArrayUtils.remove(Tooltips, id);
-						observer.disconnect();
-						if (zIndexed) BDFDB.DOMUtils.removeClass(itemLayerContainer, BDFDB.disCN.itemlayercontainerzindexdisabled);
-						if (typeof config.onHide == "function") config.onHide(itemLayer, anker);
-					});
-					(tooltip.update = itemLayer.update = newText => {
-						if (newText) tooltip.setText(newText);
+					};
+					const update = newText => {
+						if (newText) setText(newText);
 						let left, top;
 						const tRects = BDFDB.DOMUtils.getRects(anker);
 						const iRects = BDFDB.DOMUtils.getRects(itemLayer);
@@ -1718,7 +1699,29 @@ module.exports = (_ => {
 								}
 							}
 						}
-					})();
+					};
+
+					const mouseMove = e => {
+						let parent = e.target.parentElement.querySelector(":hover");
+						if (parent && anker != parent && !anker.contains(parent)) removeTooltip();
+					};
+					const mouseLeave = e => removeTooltip();
+					if (!config.perssist) {
+						document.addEventListener("mousemove", mouseMove);
+						document.addEventListener("mouseleave", mouseLeave);
+					}
+					
+					const observer = new MutationObserver(changes => changes.forEach(change => {
+						let nodes = Array.from(change.removedNodes);
+						if (nodes.indexOf(itemLayer) > -1 || nodes.indexOf(anker) > -1 || nodes.some(n => n.contains(anker))) removeTooltip();
+					}));
+					observer.observe(document.body, {subtree: true, childList: true});
+					
+					tooltip.removeTooltip = itemLayer.removeTooltip = removeTooltip;
+					tooltip.setText = itemLayer.setText = setText;
+					tooltip.update = itemLayer.update = update;
+					setText(text);
+					update();
 					
 					if (config.delay) {
 						BDFDB.DOMUtils.toggle(itemLayer);
@@ -2069,7 +2072,7 @@ module.exports = (_ => {
 										let tempReturn = BDFDB.TimeUtils.suppress(module.BDFDB_patches[methodName].instead[priority][id], `"instead" callback of ${methodName} in ${name}`, {name: module.BDFDB_patches[methodName].instead[priority][id].pluginName, version: module.BDFDB_patches[methodName].instead[priority][id].pluginVersion})(data);
 										if (tempReturn !== undefined) data.returnValue = tempReturn;
 									}
-									if ((!hasInsteadPatches || callInstead) && !stopCall) BDFDB.TimeUtils.suppress(data.callOriginalMethod, `originalMethod of ${methodName} in ${name}`)();
+									if ((!hasInsteadPatches || callInstead) && !stopCall) BDFDB.TimeUtils.suppress(data.callOriginalMethod, `originalMethod of ${methodName} in ${name}`, {name: "Discord"})();
 									
 									if (!module.BDFDB_patches || !module.BDFDB_patches[methodName]) return methodName == "render" && data.returnValue === undefined ? null : data.returnValue;
 									for (let priority in module.BDFDB_patches[methodName].after) for (let id in BDFDB.ObjectUtils.sort(module.BDFDB_patches[methodName].after[priority])) {
@@ -3603,9 +3606,12 @@ module.exports = (_ => {
 					
 					let titleChildren = [], headerChildren = [], contentChildren = [], footerChildren = [];
 					
-					if (typeof config.text == "string") contentChildren.push(BDFDB.ReactUtils.createElement(InternalComponents.LibraryComponents.TextElement, {
-						children: config.text
-					}));
+					if (typeof config.text == "string") {
+						config.contentClassName = BDFDB.DOMUtils.formatClassName(config.contentClassName, BDFDB.disCN.modaltextcontent);
+						contentChildren.push(BDFDB.ReactUtils.createElement(InternalComponents.LibraryComponents.TextElement, {
+							children: config.text
+						}));
+					}
 					
 					if (config.children) {
 						let tabBarItems = [], tabIns = {};
@@ -7803,6 +7809,13 @@ module.exports = (_ => {
 				changeLogs = BDFDB.DataUtils.load(BDFDB, "changeLogs");
 				BDFDB.PluginUtils.checkChangeLog(BDFDB);
 				
+				if (window.Lightcord || window.LightCord) BDFDB.ModalUtils.open(BDFDB, {
+					header: "Attention!",
+					subHeader: "Modified Client detected",
+					text: "We detected that you are using LightCord. Unlike other Client Modificaton (BetterDiscord, PowerCord), LightCord is a completely modified Client, which is no longer maintained by Discord but instead by a 3rd Party. This will put your Account to risk, not only because the 3rd Party might do with your Account Credentials what they want, you are also breaking a higher Instance of Discord's ToS by using a 3rd Party Client instead of using a simple Client Mod. Many Plugins won't flawlessly run on LightCord. We do not support LightCord and as such, we do not provide Help or Support. You should switch to another Modification.",
+					buttons: [{color: "RED", contents: BDFDB.LanguageUtils.LanguageStrings.OKAY, close: true}]
+				});
+				
 				InternalBDFDB.patchPlugin(BDFDB);
 				
 				for (let type of QueuedComponents) if (!PluginStores.patchQueues[type]) PluginStores.patchQueues[type] = {query: [], modules: []};
@@ -8270,7 +8283,11 @@ module.exports = (_ => {
 							value: InternalBDFDB.settings.general[key],
 							nativeValue: nativeSetting
 						});
-						settingsItems.push(BDFDB.ReactUtils.createElement(InternalComponents.LibraryComponents.SettingsSaveItem, {
+						let hidden = typeof InternalBDFDB.defaults.general[key].isHidden == "function" && InternalBDFDB.defaults.general[key].isHidden({
+							value: InternalBDFDB.settings.general[key],
+							nativeValue: nativeSetting
+						});
+						if (!hidden) settingsItems.push(BDFDB.ReactUtils.createElement(InternalComponents.LibraryComponents.SettingsSaveItem, {
 							type: "Switch",
 							plugin: InternalBDFDB,
 							disabled: disabled,
