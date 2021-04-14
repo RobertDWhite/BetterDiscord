@@ -2,7 +2,7 @@
  * @name BDFDB
  * @author DevilBro
  * @authorId 278543574059057154
- * @version 1.5.2
+ * @version 1.5.5
  * @description Required Library for DevilBro's Plugins
  * @invite Jx3TjNS
  * @donate https://www.paypal.me/MircoWittrien
@@ -22,7 +22,7 @@ module.exports = (_ => {
 		"info": {
 			"name": "BDFDB",
 			"author": "DevilBro",
-			"version": "1.5.2",
+			"version": "1.5.5",
 			"description": "Required Library for DevilBro's Plugins"
 		},
 		"rawUrl": `https://mwittrien.github.io/BetterDiscordAddons/Library/0BDFDB.plugin.js`
@@ -213,7 +213,7 @@ module.exports = (_ => {
 		catch (err) {BDFDB.LogUtils.error([strings, err], config);}
 	}};
 
-	BDFDB.LogUtils.log("Loading library");
+	BDFDB.LogUtils.log("Loading Library");
 
 	BDFDB.sameProto = function (a, b) {
 		if (a != null && typeof a == "object") return a.constructor && a.constructor.prototype && typeof a.constructor.prototype.isPrototypeOf == "function" && a.constructor.prototype.isPrototypeOf(b);
@@ -977,16 +977,23 @@ module.exports = (_ => {
 
 	
 	const loadLibrary = tryAgain => {
-		const request = require("request");
+		const request = require("request"), fs = require("fs"), path = require("path");
 		request.get(`${myGithub}/Library/_res/BDFDB.raw.css`, (e, r, b) => {
 			if ((e || !b || r.statusCode != 200) && tryAgain) return BDFDB.TimeUtils.timeout(_ => loadLibrary(), 10000);
-			const css = b;
+			const cssPath = path.join(BDFDB.BDUtils.getPluginsFolder(), "0BDFDB.raw.css");
+			const css = !e && b && r.statusCode == 200 ? b : fs.existsSync(cssPath) && (fs.readFileSync(cssPath) || "").toString();
 			request.get(`${myGithub}/Library/_res/BDFDB.data.json`, BDFDB.TimeUtils.suppress((e2, r2, b2) => {
+				const dataPath = path.join(BDFDB.BDUtils.getPluginsFolder(), "0BDFDB.data.json");
 				if (e2 || !b2 || r2.statusCode != 200) {
 					if (tryAgain) return BDFDB.TimeUtils.timeout(_ => loadLibrary(), 10000);
-					else BdApi.alert("Error", "Could not initiate BDFDB Library Plugin. Check your Internet Connection and make sure GitHub isn't blocked in your Network.");
+					else {
+						b2 = fs.existsSync(dataPath) && (fs.readFileSync(dataPath) || "").toString() || null;
+						if (!b2) BdApi.alert("Error", "Could not initiate BDFDB Library Plugin. Check your Internet Connection and make sure GitHub isn't blocked by your Network or try disabling your VPN/Proxy.");
+					}
 				}
 				const InternalData = JSON.parse(b2);
+				if (!e && b && r.statusCode == 200) fs.writeFile(cssPath, b, _ => {});
+				if (!e2 && b2 && r2.statusCode == 200) fs.writeFile(dataPath, b2, _ => {});
 				
 				InternalBDFDB.getPluginURL = function (plugin) {
 					plugin = plugin == BDFDB && InternalBDFDB || plugin;
@@ -2036,7 +2043,8 @@ module.exports = (_ => {
 					const pluginName = typeof plugin === "string" ? plugin : plugin.name;
 					const pluginVersion = typeof plugin === "string" ? "" : plugin.version;
 					const pluginId = pluginName.toLowerCase();
-					const patchPriority = BDFDB.ObjectUtils.is(plugin) && !isNaN(plugin.patchPriority) ? (plugin.patchPriority < 0 ? 0 : (plugin.patchPriority > 10 ? 10 : Math.round(plugin.patchPriority))) : 5;
+					let patchPriority = !isNaN(config.priority) ? config.priority : (BDFDB.ObjectUtils.is(plugin) && !isNaN(plugin.patchPriority) ? plugin.patchPriority : 5);
+					patchPriority = patchPriority < 1 ? (plugin == InternalBDFDB ? 0 : 1) : (patchPriority > 9 ? (plugin == InternalBDFDB ? 10 : 9) : Math.round(patchPriority));
 					if (!BDFDB.ObjectUtils.is(module.BDFDB_patches)) module.BDFDB_patches = {};
 					methodNames = [methodNames].flat(10).filter(n => n);
 					let cancel = _ => {BDFDB.PatchUtils.unpatch(plugin, module, methodNames);};
@@ -2223,9 +2231,11 @@ module.exports = (_ => {
 						if (InternalData.LibraryModules[name].nonProps) LibraryModules[name] = BDFDB.ModuleUtils.find(m => InternalData.LibraryModules[name].props.every(prop => typeof m[prop] == "function") && InternalData.LibraryModules[name].nonProps.every(prop => typeof m[prop] != "function"));
 						else LibraryModules[name] = BDFDB.ModuleUtils.findByProperties(InternalData.LibraryModules[name].props);
 					}
+					else if (InternalData.LibraryModules[name].strings) LibraryModules[name] = BDFDB.ModuleUtils.findByString(InternalData.LibraryModules[name].strings);
+					if (InternalData.LibraryModules[name].value) LibraryModules[name] = (LibraryModules[name] || {})[InternalData.LibraryModules[name].value];
 				}
 				if (LibraryModules.KeyCodeUtils) LibraryModules.KeyCodeUtils.getString = function (keyArray) {
-					return LibraryModules.KeyCodeUtils.toString([keyArray].flat(10).filter(n => n).map(keycode => [BDFDB.DiscordConstants.KeyboardDeviceTypes.KEYBOARD_KEY, keycode, BDFDB.DiscordConstants.KeyboardEnvs.BROWSER]), true);
+					return LibraryModules.KeyCodeUtils.toString([keyArray].flat(10).filter(n => n).map(keyCode => [BDFDB.DiscordConstants.KeyboardDeviceTypes.KEYBOARD_KEY, LibraryModules.KeyCodeUtils.keyToCode((Object.entries(LibraryModules.KeyEvents.codes).find(n => n[1] == keyCode && LibraryModules.KeyCodeUtils.keyToCode(n[0], null)) || [])[0], null) || keyCode]), true);
 				};
 				BDFDB.LibraryModules = Object.assign({}, LibraryModules);
 				
@@ -5441,7 +5451,7 @@ module.exports = (_ => {
 							disabled: props.isDisabled,
 							onClick: _ => {
 								if (!props.isSelected) {
-									let color = props.isCustom && props.color == null ? (swatches.props.color || "rgba(0, 0, 0, 1)") : props.color;
+									let color = props.isCustom && props.color == null ? (swatches.props.color || swatches.props.defaultCustomColor || "rgba(0, 0, 0, 1)") : props.color;
 									if (typeof swatches.props.onColorChange == "function") swatches.props.onColorChange(BDFDB.ColorUtils.convert(color, "RGBCOMP"));
 									swatches.props.color = color;
 									swatches.props.customColor = props.isCustom ? color : swatches.props.customColor;
@@ -5519,6 +5529,7 @@ module.exports = (_ => {
 						this.props.colors = (BDFDB.ArrayUtils.is(this.props.colors) ? this.props.colors : [null, 5433630, 3066993, 1752220, 3447003, 3429595, 8789737, 10181046, 15277667, 15286558, 15158332, 15105570, 15844367, 13094093, 7372936, 6513507, 16777215, 3910932, 2067276, 1146986, 2123412, 2111892, 7148717, 7419530, 11342935, 11345940, 10038562, 11027200, 12745742, 9936031, 6121581, 2894892]).map(c => BDFDB.ColorUtils.convert(c, "RGBA"));
 						this.props.colorRows = this.props.colors.length ? [this.props.colors.slice(0, parseInt(this.props.colors.length/2)), this.props.colors.slice(parseInt(this.props.colors.length/2))] : [];
 						this.props.customColor = !this.props.color || !this.props.customSelected && this.props.colors.indexOf(this.props.color) > -1 ? null : this.props.color;
+						this.props.defaultCustomColor = BDFDB.ObjectUtils.is(this.props.defaultCustomColor) ? this.props.defaultCustomColor : BDFDB.ColorUtils.convert(this.props.defaultCustomColor, "RGBA");
 						this.props.customSelected = !!this.props.customColor;
 						this.props.pickerConfig = BDFDB.ObjectUtils.is(this.props.pickerConfig) ? this.props.pickerConfig : {gradient: true, alpha: true};
 						
@@ -6097,14 +6108,17 @@ module.exports = (_ => {
 				
 				InternalComponents.LibraryComponents.KeybindRecorder = reactInitialized && class BDFDB_KeybindRecorder extends LibraryModules.React.Component {
 					handleChange(arrays) {
-						if (typeof this.props.onChange == "function") this.props.onChange(arrays.map(platformkey => LibraryModules.KeyEvents.codes[LibraryModules.KeyCodeUtils.codeToKey(platformkey)] || platformkey[1]), this);
+						this.props.value = arrays.map(platformKey => LibraryModules.KeyEvents.codes[LibraryModules.KeyCodeUtils.codeToKey(platformKey)] || platformKey[1]);
+						if (typeof this.props.onChange == "function") this.props.onChange(this.props.value, this);
 					}
 					handleReset() {
-						this.props.defaultValue = [];
-						let recorder = BDFDB.ReactUtils.findOwner(this, {name: "KeybindRecorder"});
-						if (recorder) recorder.setState({codes: []});
+						this.props.value = [];
+						if (this.recorder) this.recorder.setState({codes: []});
 						if (typeof this.props.onChange == "function") this.props.onChange([], this);
 						if (typeof this.props.onReset == "function") this.props.onReset(this);
+					}
+					componentDidMount() {
+						if (!this.recorder) this.recorder = BDFDB.ReactUtils.findOwner(this, {name: "KeybindRecorder"});
 					}
 					render() {
 						return BDFDB.ReactUtils.createElement(InternalComponents.LibraryComponents.Flex, {
@@ -6113,7 +6127,7 @@ module.exports = (_ => {
 							align: InternalComponents.LibraryComponents.Flex.Align.CENTER,
 							children: [
 								BDFDB.ReactUtils.createElement(InternalComponents.NativeSubComponents.KeybindRecorder, BDFDB.ObjectUtils.exclude(Object.assign({}, this.props, {
-									defaultValue: [this.props.defaultValue].flat(10).filter(n => n).map(keycode => [BDFDB.DiscordConstants.KeyboardDeviceTypes.KEYBOARD_KEY, keycode, BDFDB.DiscordConstants.KeyboardEnvs.BROWSER]),
+									defaultValue: [this.props.defaultValue || this.props.value].flat(10).filter(n => n).map(keyCode => [BDFDB.DiscordConstants.KeyboardDeviceTypes.KEYBOARD_KEY, LibraryModules.KeyCodeUtils.keyToCode((Object.entries(LibraryModules.KeyEvents.codes).find(n => n[1] == keyCode && LibraryModules.KeyCodeUtils.keyToCode(n[0], null)) || [])[0], null) || keyCode]),
 									onChange: this.handleChange.bind(this)
 								}), "reset", "onReset")),
 								this.props.reset || this.props.onReset ? BDFDB.ReactUtils.createElement(InternalComponents.LibraryComponents.TooltipContainer, {
@@ -7670,9 +7684,7 @@ module.exports = (_ => {
 					if (index > -1) children[index] = BDFDB.ReactUtils.createElement(AppViewExport.exports.default, children[index].props);
 				};
 				
-				let MessageHeaderExport = BDFDB.ModuleUtils.findByProperties("MessageTimestamp", false);
 				InternalBDFDB.processMessage = function (e) {
-					if (MessageHeaderExport && BDFDB.ObjectUtils.get(e, "instance.props.childrenHeader.type.type.name") && BDFDB.ObjectUtils.get(e, "instance.props.childrenHeader.props.message")) e.instance.props.childrenHeader.type = MessageHeaderExport.exports.default;
 					if (e.returnvalue && e.returnvalue.props && e.returnvalue.props.children && e.returnvalue.props.children.props) {
 						let message;
 						for (let key in e.instance.props) {
@@ -7859,6 +7871,13 @@ module.exports = (_ => {
 						InternalBDFDB.executeExtraPatchedPatches("GuildHeaderContextMenu", {instance: {props: e2.methodArguments[0]}, returnvalue: e2.returnValue, methodname: "type"});
 					}}, {noCache: true});
 				}});
+				
+				BDFDB.PatchUtils.patch(BDFDB, (BDFDB.ModuleUtils.findByName("useCopyIdItem", false) || {}).exports, "default", {after: e => {
+					if (!e.returnValue) e.returnValue = false;
+				}}, {priority: 10});
+				BDFDB.PatchUtils.patch(BDFDB, (BDFDB.ModuleUtils.findByName("DeveloperContextMenu", false) || {}).exports, "default", {after: e => {
+					if (!e.returnValue.props.children) LibraryModules.ContextMenuUtils.closeContextMenu();
+				}}, {priority: 10});
 				
 				InternalBDFDB.onSettingsClosed = function () {
 					if (InternalBDFDB.SettingsUpdated) {
@@ -8212,7 +8231,7 @@ module.exports = (_ => {
 				if (!document.querySelector("head #bd-stylesheet")) BDFDB.DOMUtils.appendWebStyle("https://rauenzi.github.io/BetterDiscordApp/src/styles/index.css");
 				if (css) BDFDB.DOMUtils.appendLocalStyle("BDFDB", css.replace(/[\n\t\r]/g, "").replace(/\[REPLACE_CLASS_([A-z0-9_]+?)\]/g, function(a, b) {return BDFDB.dotCN[b];}));
 			
-				BDFDB.LogUtils.log("Finished loading library");
+				BDFDB.LogUtils.log("Finished loading Library");
 				
 				window.BDFDB_Global = Object.assign({
 					started: true,
