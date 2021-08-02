@@ -2,7 +2,7 @@
  * @name CharCounter
  * @author DevilBro
  * @authorId 278543574059057154
- * @version 1.5.4
+ * @version 1.5.6
  * @description Adds a Character Counter to most Inputs
  * @invite Jx3TjNS
  * @donate https://www.paypal.me/MircoWittrien
@@ -17,12 +17,12 @@ module.exports = (_ => {
 		"info": {
 			"name": "CharCounter",
 			"author": "DevilBro",
-			"version": "1.5.4",
+			"version": "1.5.6",
 			"description": "Adds a Character Counter to most Inputs"
 		},
 		"changeLog": {
 			"improved": {
-				"Nitro Max Message Length": "Now uses 4000 as Max Limit when the user has the permissions to"
+				"Threads": "Works flawlessly with Threads now"
 			}
 		}
 	};
@@ -81,6 +81,8 @@ module.exports = (_ => {
 		};
 		const typeMap = {
 			normal: "chat",
+			sidebar: "chat",
+			thread_creation: "threadcreation",
 			form: "upload"
 		};
 	
@@ -113,6 +115,10 @@ module.exports = (_ => {
 					${BDFDB.dotCN._charcountereditcounter} {
 						right: 0;
 						bottom: -1.3em;
+					}
+					${BDFDB.dotCN._charcounterthreadcreationcounter} {
+						right: 0;
+						bottom: -1.1em;
 					}
 					${BDFDB.dotCN._charcounteruploadcounter} {
 						right: 0;
@@ -188,7 +194,7 @@ module.exports = (_ => {
 					className: BDFDB.DOMUtils.formatClassName(BDFDB.disCN._charcountercounter, type && BDFDB.disCN[`_charcounter${typeMap[type] || type}counter`]),
 					refClass: refClass,
 					parsing: parsing,
-					max: maxLengths[type] || (BDFDB.LibraryModules.NitroUtils.canUseIncreasedMessageLength(BDFDB.UserUtils.me) && BDFDB.DiscordUtils.getExperiment("premiumContentLengthAvailable") !== false ? BDFDB.DiscordConstants.MAX_MESSAGE_LENGTH_PREMIUM : BDFDB.DiscordConstants.MAX_MESSAGE_LENGTH),
+					max: maxLengths[type] || (BDFDB.LibraryModules.NitroUtils.canUseIncreasedMessageLength(BDFDB.UserUtils.me) ? BDFDB.DiscordConstants.MAX_MESSAGE_LENGTH_PREMIUM : BDFDB.DiscordConstants.MAX_MESSAGE_LENGTH),
 					onChange: instance => {
 						let node = BDFDB.ReactUtils.findDOMNode(instance);
 						let form = node && BDFDB.DOMUtils.getParent(BDFDB.dotCN.chatform, node);
