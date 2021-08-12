@@ -2,7 +2,7 @@
  * @name BDFDB
  * @author DevilBro
  * @authorId 278543574059057154
- * @version 1.7.14
+ * @version 1.8.0
  * @description Required Library for DevilBro's Plugins
  * @invite Jx3TjNS
  * @donate https://www.paypal.me/MircoWittrien
@@ -19,10 +19,15 @@ module.exports = (_ => {
 		"info": {
 			"name": "BDFDB",
 			"author": "DevilBro",
-			"version": "1.7.14",
+			"version": "1.8.0",
 			"description": "Required Library for DevilBro's Plugins"
 		},
-		"rawUrl": `https://mwittrien.github.io/BetterDiscordAddons/Library/0BDFDB.plugin.js`
+		"rawUrl": `https://mwittrien.github.io/BetterDiscordAddons/Library/0BDFDB.plugin.js`,
+		"changeLog": {
+			"improved": {
+				"Performance": "Startup time was reduced to a 1/10 and overall performance was improved, Might need a Reload with Ctrl+R to work flawlessly"
+			}
+		}
 	};
 	
 	const DiscordObjects = {};
@@ -270,12 +275,6 @@ module.exports = (_ => {
 	BDFDB.ObjectUtils = {};
 	BDFDB.ObjectUtils.is = function (obj) {
 		return obj && !Array.isArray(obj) && !Set.prototype.isPrototypeOf(obj) && (typeof obj == "function" || typeof obj == "object");
-	};
-	BDFDB.ObjectUtils.isProxy = function (obj) {
-		if (!obj && typeof obj !== "object") return false;
-		const testValue = obj.oASdiAShDhSAIDHSAIODHSAIDHSIOADHISADHIOSAHDISAHDIOSHADISAHasdiadISAodHiOAdasih;
-		if (typeof testValue == "string" && !testValue) return true;
-		return false;
 	};
 	BDFDB.ObjectUtils.get = function (nodeOrObj, valuePath) {
 		if (!nodeOrObj || !valuePath) return null;
@@ -1123,7 +1122,7 @@ module.exports = (_ => {
 				else BDFDB.LogUtils.error(["Failed to initiate Library!", dataString ? "Corrupt Backup." : "No Backup.", err]);
 			}
 			if (fetched && dataString) fs.writeFile(dataFilePath, dataString, _ => {});
-				
+			
 			InternalBDFDB.getWebModuleReq = function () {
 				if (!InternalBDFDB.getWebModuleReq.req) {
 					const id = "BDFDB-WebModules";
@@ -1200,18 +1199,6 @@ module.exports = (_ => {
 				else BDFDB.LogUtils.warn(`${cacheString} [${type}] not found in WebModules`);
 			}
 		};
-		const proxyStates = {};
-		InternalBDFDB.isSearchableModule = function (m, path) {
-			if (m && (typeof m == "object" || typeof m == "function")) {
-				path = [path].flat(10).join(" ");
-				if (proxyStates[path] !== undefined) return !proxyStates[path];
-				else {
-					proxyStates[path] = BDFDB.ObjectUtils.isProxy(m);
-					return !proxyStates[path];
-				}
-			}
-			return false;
-		};
 		
 		BDFDB.ModuleUtils = {};
 		BDFDB.ModuleUtils.find = function (filter, getExport) {
@@ -1220,11 +1207,9 @@ module.exports = (_ => {
 			for (let i in req.c) if (req.c.hasOwnProperty(i)) {
 				let m = req.c[i].exports;
 				if (m && (typeof m == "object" || typeof m == "function") && filter(m)) return getExport ? m : req.c[i];
-				if (m && m.__esModule) {
-					for (let j in m) if (InternalBDFDB.isSearchableModule(m[j], [i, j]) && filter(m[j])) return getExport ? m[j] : req.c[i];
-					if (m.default && (typeof m.default == "object" || typeof m.default == "function")) {
-						for (let j in m.default) if (InternalBDFDB.isSearchableModule(m.default[j], [i, "default", j]) && filter(m.default[j])) return getExport ? m.default[j] : req.c[i];
-					}
+				if (m && m.__esModule && m.default && (typeof m.default == "object" || typeof m.default == "function")) {
+					if (filter(m.default)) return getExport ? m.default : req.c[i];
+					else if (m.default.type && (typeof m.default.type == "object" || typeof m.default.type == "function") && filter(m.default.type)) return getExport ? m.default.type : req.c[i];
 				}
 			}
 			for (let i in req.m) if (req.m.hasOwnProperty(i)) {
@@ -1253,7 +1238,7 @@ module.exports = (_ => {
 			}), getExport);
 		};
 		BDFDB.ModuleUtils.findByName = function (name, getExport) {
-			return InternalBDFDB.findModule("name", JSON.stringify(name), m => m.displayName === name || m.render && m.render.displayName === name, typeof getExport != "boolean" ? true : getExport);
+			return InternalBDFDB.findModule("name", JSON.stringify(name), m => m.displayName === name || m.render && m.render.displayName === name || m[name] && m[name].displayName === name, typeof getExport != "boolean" ? true : getExport);
 		};
 		BDFDB.ModuleUtils.findByString = function (...strings) {
 			strings = strings.flat(10);
@@ -2474,7 +2459,8 @@ module.exports = (_ => {
 	
 		for (let name in InternalData.DiscordObjects) {
 			if (InternalData.DiscordObjects[name].props) DiscordObjects[name] = BDFDB.ModuleUtils.findByPrototypes(InternalData.DiscordObjects[name].props);
-			else if (InternalData.DiscordObjects[name].protos) DiscordObjects[name] = BDFDB.ModuleUtils.find(m => m.prototype && InternalData.DiscordObjects[name].protos.every(proto => m.prototype[proto] && (!InternalData.DiscordObjects[name].array || Array.isArray(m.prototype[proto]))));
+			else if (InternalData.DiscordObjects[name].strings) DiscordObjects[name] = BDFDB.ModuleUtils.findByString(InternalData.DiscordObjects[name].strings);
+			if (InternalData.DiscordObjects[name].value) DiscordObjects[name] = (DiscordObjects[name] || {})[InternalData.DiscordObjects[name].value];
 		}
 		BDFDB.DiscordObjects = Object.assign({}, DiscordObjects);
 		
@@ -3005,6 +2991,9 @@ module.exports = (_ => {
 		};
 
 		BDFDB.MessageUtils = {};
+		BDFDB.MessageUtils.isSystemMessage = function (message) {
+			return message && !BDFDB.DiscordConstants.USER_MESSAGE_TYPES.has(message.type) && (message.type !== BDFDB.DiscordConstants.MessageTypes.APPLICATION_COMMAND || message.interaction == null);
+		};
 		BDFDB.MessageUtils.rerenderAll = function (instant) {
 			BDFDB.TimeUtils.clear(BDFDB.MessageUtils.rerenderAll.timeout);
 			BDFDB.MessageUtils.rerenderAll.timeout = BDFDB.TimeUtils.timeout(_ => {
@@ -5886,7 +5875,18 @@ module.exports = (_ => {
 			return date.toLocaleString(language).replace(date.toLocaleDateString(language), "$date").replace(date.toLocaleTimeString(language, {hourCycle: "h12"}), "$time12").replace(date.toLocaleTimeString(language, {hourCycle: "h11"}), "$time12").replace(date.toLocaleTimeString(language, {hourCycle: "h24"}), "$time").replace(date.toLocaleTimeString(language, {hourCycle: "h23"}), "$time");
 		};
 		InternalComponents.LibraryComponents.DateInput.parseDate = function (date, offset) {
-			let timeObj = typeof date == "string" || typeof date == "number" ? new Date(date) : date;
+			let timeObj = date;
+			if (typeof timeObj == "string") {
+				const language = BDFDB.LanguageUtils.getLanguage().id;
+				for (let i = 0; i < 12; i++) {
+					const tempDate = new Date();
+					tempDate.setMonth(i);
+					timeObj = timeObj.replace(tempDate.toLocaleDateString(language, {month:"long"}), tempDate.toLocaleDateString("en", {month:"short"}));
+				}
+				timeObj = new Date(timeObj);
+			}
+			else if (typeof timeObj == "number") timeObj = new Date(timeObj);
+			
 			if (timeObj.toString() == "Invalid Date") timeObj = new Date(parseInt(date));
 			if (timeObj.toString() == "Invalid Date" || typeof timeObj.toLocaleDateString != "function") timeObj = new Date();
 			offset = offset != null && parseFloat(offset);
@@ -8005,7 +8005,7 @@ module.exports = (_ => {
 		};
 		
 		const ContextMenuTypes = ["UserSettingsCog", "UserProfileActions", "User", "Developer", "Slate", "GuildFolder", "GroupDM", "SystemMessage", "Message", "Native", "Role", "Guild", "Channel"];
-		const QueuedComponents = BDFDB.ArrayUtils.removeCopies([].concat(ContextMenuTypes.map(n => n + "ContextMenu"), ["GuildHeaderContextMenu", "MessageOptionContextMenu", "MessageOptionToolbar"]));	
+		const QueuedComponents = BDFDB.ArrayUtils.removeCopies([].concat(ContextMenuTypes.map(n => n + "ContextMenu"), ["GuildHeaderContextMenu", "SystemMessageOptionContextMenu", "SystemMessageOptionToolbar", "MessageOptionContextMenu", "MessageOptionToolbar"]));	
 		InternalBDFDB.addContextListeners = function (plugin) {
 			plugin = plugin == BDFDB && InternalBDFDB || plugin;
 			for (let type of QueuedComponents) if (typeof plugin[`on${type}`] == "function") {
@@ -8034,7 +8034,7 @@ module.exports = (_ => {
 		changeLogs = BDFDB.DataUtils.load(BDFDB, "changeLogs");
 		BDFDB.PluginUtils.checkChangeLog(BDFDB);
 		
-		if (window.Lightcord || window.LightCord) BDFDB.ModalUtils.open(BDFDB, {
+		if (window.Lightcord && !Node.prototype.isPrototypeOf(window.Lightcord) || window.LightCord && !Node.prototype.isPrototypeOf(window.LightCord)) BDFDB.ModalUtils.open(BDFDB, {
 			header: "Attention!",
 			subHeader: "Modified Client detected",
 			text: "We detected that you are using LightCord. Unlike other client modificaton (BetterDiscord, PowerCord), LightCord is a completely modified client, which is no longer maintained by Discord but instead by a 3rd party. This will put your account at risk, not only because the 3rd party might use your account credentials as they like, you are also breaking a higher instance of Discord's ToS by using a 3rd party client instead of using a simple client mod which injects itself into the original client app. Many Plugins won't flawlessly run on LightCord. We do not support LightCord and as such, we do not provide help or support. You should switch to another modification as soon as possible.",
@@ -8061,17 +8061,17 @@ module.exports = (_ => {
 		}});
 		
 		BDFDB.PatchUtils.patch(BDFDB, BDFDB.ObjectUtils.get(BDFDB.ModuleUtils.findByString("renderReactions", "canAddNewReactions", "showMoreUtilities", false), "exports.default"), "type", {after: e => {
-			if (document.querySelector(BDFDB.dotCN.emojipicker) || !BDFDB.ObjectUtils.toArray(PluginStores.loaded).filter(p => p.started).some(p => p.onMessageOptionContextMenu || p.onMessageOptionToolbar)) return;
+			if (document.querySelector(BDFDB.dotCN.emojipicker) || !BDFDB.ObjectUtils.toArray(PluginStores.loaded).filter(p => p.started).some(p => p.onSystemMessageOptionContextMenu || p.onSystemMessageOptionToolbar || p.onMessageOptionContextMenu || p.onMessageOptionToolbar)) return;
 			let toolbar = BDFDB.ReactUtils.findChild(e.returnValue, {filter: c => c && c.props && c.props.showMoreUtilities != undefined && c.props.showEmojiPicker != undefined && c.props.setPopout != undefined});
 			if (toolbar) BDFDB.PatchUtils.patch(BDFDB, toolbar, "type", {after: e2 => {
 				let menu = BDFDB.ReactUtils.findChild(e2.returnValue, {filter: c => c && c.props && typeof c.props.onRequestClose == "function" && c.props.onRequestClose.toString().indexOf("moreUtilities") > -1});
-				InternalBDFDB.executeExtraPatchedPatches("MessageOptionToolbar", {instance: {props: e2.methodArguments[0]}, returnvalue: e2.returnValue, methodname: "default"});
+				InternalBDFDB.executeExtraPatchedPatches(BDFDB.MessageUtils.isSystemMessage(e2.methodArguments[0] && e2.methodArguments[0].message) ? "SystemMessageOptionToolbar" : "MessageOptionToolbar", {instance: {props: e2.methodArguments[0]}, returnvalue: e2.returnValue, methodname: "default"});
 				if (menu && typeof menu.props.renderPopout == "function") {
 					let renderPopout = menu.props.renderPopout;
 					menu.props.renderPopout = BDFDB.TimeUtils.suppress((...args) => {
 						let renderedPopout = renderPopout(...args);
 						BDFDB.PatchUtils.patch(BDFDB, renderedPopout, "type", {after: e3 => {
-							InternalBDFDB.executeExtraPatchedPatches("MessageOptionContextMenu", {instance: {props: e3.methodArguments[0]}, returnvalue: e3.returnValue, methodname: "default"});
+							InternalBDFDB.executeExtraPatchedPatches(BDFDB.MessageUtils.isSystemMessage(e3.methodArguments[0] && e3.methodArguments[0].message) ? "SystemMessageOptionContextMenu" : "MessageOptionContextMenu", {instance: {props: e3.methodArguments[0]}, returnvalue: e3.returnValue, methodname: "default"});
 						}}, {noCache: true});
 						return renderedPopout;
 					});
