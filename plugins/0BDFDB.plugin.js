@@ -2,7 +2,7 @@
  * @name BDFDB
  * @author DevilBro
  * @authorId 278543574059057154
- * @version 1.8.4
+ * @version 1.8.6
  * @description Required Library for DevilBro's Plugins
  * @invite Jx3TjNS
  * @donate https://www.paypal.me/MircoWittrien
@@ -19,7 +19,7 @@ module.exports = (_ => {
 		"info": {
 			"name": "BDFDB",
 			"author": "DevilBro",
-			"version": "1.8.4",
+			"version": "1.8.6",
 			"description": "Required Library for DevilBro's Plugins"
 		},
 		"rawUrl": `https://mwittrien.github.io/BetterDiscordAddons/Library/0BDFDB.plugin.js`
@@ -7705,9 +7705,9 @@ module.exports = (_ => {
 				let childProps = Object.assign({}, child.props);
 				let shown = false;
 				child.props.onMouseEnter = (e, childThis) => {
-					if (!shown && !e.currentTarget.BDFDBtooltipShown) {
+					if (!shown && !e.currentTarget.BDFDBtooltipShown && !(this.props.onlyShowOnShift && !e.shiftKey) && !(this.props.onlyShowOnCtrl && !e.ctrlKey)) {
 						e.currentTarget.BDFDBtooltipShown = shown = true;
-						this.tooltip = BDFDB.TooltipUtils.create(e.currentTarget, typeof this.props.text == "function" ? this.props.text(this) : this.props.text, Object.assign({
+						this.tooltip = BDFDB.TooltipUtils.create(e.currentTarget, typeof this.props.text == "function" ? this.props.text(this, e) : this.props.text, Object.assign({
 							note: this.props.note,
 							delay: this.props.delay
 						}, this.props.tooltipConfig, {
@@ -7728,12 +7728,12 @@ module.exports = (_ => {
 				child.props.onClick = (e, childThis) => {
 					if (typeof this.props.onClick == "function") this.props.onClick(e, this);
 					if (typeof childProps.onClick == "function") childProps.onClick(e, childThis);
-					if (typeof this.props.text == "function") this.updateTooltip(this.props.text(this));
+					if (typeof this.props.text == "function") this.updateTooltip(this.props.text(this, e));
 				};
 				child.props.onContextMenu = (e, childThis) => {
 					if (typeof this.props.onContextMenu == "function") this.props.onContextMenu(e, this);
 					if (typeof childProps.onContextMenu == "function") childProps.onContextMenu(e, childThis);
-					if (typeof this.props.text == "function") this.updateTooltip(this.props.text(this));
+					if (typeof this.props.text == "function") this.updateTooltip(this.props.text(this, e));
 				};
 				return BDFDB.ReactUtils.createElement(LibraryModules.React.Fragment, {
 					children: child
@@ -7890,7 +7890,10 @@ module.exports = (_ => {
 					if (!message) message = BDFDB.ObjectUtils.get(e.instance.props[key], "props.message");
 					else break;
 				}
-				if (message) e.returnvalue.props.children.props[InternalData.userIdAttribute] = message.author.id;
+				if (message) {
+					e.returnvalue.props.children.props[InternalData.authorIdAttribute] = message.author.id;
+					if (message.author.id == BDFDB.UserUtils.me.id) e.returnvalue.props.children.props[InternalData.authorSelfAttribute] = true;
+				}
 			}
 		};
 
@@ -8031,7 +8034,7 @@ module.exports = (_ => {
 		changeLogs = BDFDB.DataUtils.load(BDFDB, "changeLogs");
 		BDFDB.PluginUtils.checkChangeLog(BDFDB);
 		
-		if (window.Lightcord && !Node.prototype.isPrototypeOf(window.Lightcord) || window.LightCord && !Node.prototype.isPrototypeOf(window.LightCord)) BDFDB.ModalUtils.open(BDFDB, {
+		if (window.Lightcord && !Node.prototype.isPrototypeOf(window.Lightcord) || window.LightCord && !Node.prototype.isPrototypeOf(window.LightCord) || window.Astra && !Node.prototype.isPrototypeOf(window.Astra)) BDFDB.ModalUtils.open(BDFDB, {
 			header: "Attention!",
 			subHeader: "Modified Client detected",
 			text: "We detected that you are using LightCord. Unlike other client modificaton (BetterDiscord, PowerCord), LightCord is a completely modified client, which is no longer maintained by Discord but instead by a 3rd party. This will put your account at risk, not only because the 3rd party might use your account credentials as they like, you are also breaking a higher instance of Discord's ToS by using a 3rd party client instead of using a simple client mod which injects itself into the original client app. Many Plugins won't flawlessly run on LightCord. We do not support LightCord and as such, we do not provide help or support. You should switch to another modification as soon as possible.",

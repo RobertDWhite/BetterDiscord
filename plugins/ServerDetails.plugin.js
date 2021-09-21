@@ -2,7 +2,7 @@
  * @name ServerDetails
  * @author DevilBro
  * @authorId 278543574059057154
- * @version 1.0.6
+ * @version 1.0.7
  * @description Shows Server Details in the Server List Tooltip
  * @invite Jx3TjNS
  * @donate https://www.paypal.me/MircoWittrien
@@ -17,12 +17,17 @@ module.exports = (_ => {
 		"info": {
 			"name": "ServerDetails",
 			"author": "DevilBro",
-			"version": "1.0.6",
+			"version": "1.0.7",
 			"description": "Shows Server Details in the Server List Tooltip"
+		},
+		"changeLog": {
+			"added": {
+				"Shift": "Added Shift Key Option"
+			}
 		}
 	};
 
-	return (window.Lightcord || window.LightCord) ? class {
+	return (window.Lightcord && !Node.prototype.isPrototypeOf(window.Lightcord) || window.LightCord && !Node.prototype.isPrototypeOf(window.LightCord) || window.Astra && !Node.prototype.isPrototypeOf(window.Astra)) ? class {
 		getName () {return config.info.name;}
 		getAuthor () {return config.info.author;}
 		getVersion () {return config.info.version;}
@@ -82,6 +87,7 @@ module.exports = (_ => {
 				}
 			}
 			render() {
+				if (_this.settings.general.onlyShowOnShift && !this.props.shiftKey) return null;
 				if (_this.settings.amounts.tooltipDelay && !this.state.delayed) {
 					BDFDB.TimeUtils.timeout(_ => {
 						this.state.delayed = true;
@@ -93,7 +99,7 @@ module.exports = (_ => {
 				let owner = BDFDB.LibraryModules.UserStore.getUser(this.props.guild.ownerId);
 				if (!owner && !this.state.fetchedOwner) {
 					this.state.fetchedOwner = true;
-					BDFDB.LibraryModules.UserFetchUtils.getUser(this.props.guild.ownerId).then(_ => BDFDB.ReactUtils.forceUpdate(this));
+					BDFDB.LibraryModules.UserProfileUtils.getUser(this.props.guild.ownerId).then(_ => BDFDB.ReactUtils.forceUpdate(this));
 				}
 				let src = this.props.guild.getIconURL(this.props.guild.icon && BDFDB.LibraryModules.IconUtils.isAnimatedIconHash(this.props.guild.icon));
 				return BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.Flex, {
@@ -164,6 +170,9 @@ module.exports = (_ => {
 				_this = this;
 				
 				this.defaults = {
+					general: {
+						onlyShowOnShift:	{value: false,	description: "Only show the Details Tooltip, while holding 'Shift'"}
+					},
 					items: {
 						icon:				{value: true, 	description: "GUILD_CREATE_UPLOAD_ICON_LABEL"},
 						owner:				{value: true, 	description: "GUILD_OWNER"},
@@ -238,6 +247,18 @@ module.exports = (_ => {
 					collapseStates: collapseStates,
 					children: _ => {
 						let settingsItems = [];
+						
+						settingsItems.push(BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.CollapseContainer, {
+							title: "Settings",
+							collapseStates: collapseStates,
+							children: Object.keys(this.defaults.general).map(key => BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsSaveItem, {
+								type: "Switch",
+								plugin: this,
+								keys: ["general", key],
+								label: this.defaults.general[key].description,
+								value: this.settings.general[key]
+							}))
+						}));
 						
 						settingsItems.push(BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.CollapseContainer, {
 							title: "Tooltip Items",
@@ -334,7 +355,8 @@ module.exports = (_ => {
 							list: true,
 							offset: 12
 						}),
-						text: _ => BDFDB.ReactUtils.createElement(GuildDetailsComponent, {
+						text: (instance, event) => BDFDB.ReactUtils.createElement(GuildDetailsComponent, {
+							shiftKey: event.shiftKey,
 							tooltipContainer: tooltipContainer,
 							guild: e.instance.props.guild
 						})
