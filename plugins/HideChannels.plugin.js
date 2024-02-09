@@ -1,215 +1,351 @@
 /**
- * @name HideChannels
- * @displayName HideChannels
- * @authorId 405126960902176768
- * @website https://github.com/CapnKitten
- * @source https://raw.githubusercontent.com/CapnKitten/BetterDiscord/master/Plugins/HideChannels/HideChannels.plugin.js
- * @donate https://paypal.me/capnkitten
+ * @name Hide Channels
+ * @author Farcrada
+ * @version 2.2.11
+ * @description Hide channel list from view.
+ *
+ * @invite qH6UWCwfTu
+ * @website https://github.com/Farcrada/DiscordPlugins
+ * @source https://github.com/Farcrada/DiscordPlugins/edit/master/Hide-Channels/HideChannels.plugin.js
+ * @updateUrl https://raw.githubusercontent.com/Farcrada/DiscordPlugins/master/Hide-Channels/HideChannels.plugin.js
  */
 
-/*@cc_on
-@if (@_jscript)
-	
-	// Offer to self-install for clueless users that try to run this directly.
-	var shell = WScript.CreateObject("WScript.Shell");
-	var fs = new ActiveXObject("Scripting.FileSystemObject");
-	var pathPlugins = shell.ExpandEnvironmentStrings("%APPDATA%\BetterDiscord\plugins");
-	var pathSelf = WScript.ScriptFullName;
-	// Put the user at ease by addressing them in the first person
-	shell.Popup("It looks like you've mistakenly tried to run me directly. \n(Don't do that!)", 0, "I'm a plugin for BetterDiscord", 0x30);
-	if (fs.GetParentFolderName(pathSelf) === fs.GetAbsolutePathName(pathPlugins)) {
-		shell.Popup("I'm in the correct folder already.", 0, "I'm already installed", 0x40);
-	} else if (!fs.FolderExists(pathPlugins)) {
-		shell.Popup("I can't find the BetterDiscord plugins folder.\nAre you sure it's even installed?", 0, "Can't install myself", 0x10);
-	} else if (shell.Popup("Should I copy myself to BetterDiscord's plugins folder for you?", 0, "Do you need some help?", 0x34) === 6) {
-		fs.CopyFile(pathSelf, fs.BuildPath(pathPlugins, fs.GetFileName(pathSelf)), true);
-		// Show the user where to put plugins in the future
-		shell.Exec("explorer " + pathPlugins);
-		shell.Popup("I'm installed!", 0, "Successfully installed", 0x40);
-	}
-	WScript.Quit();
-@else@*/
+/** @type {typeof import("react")} */
+const React = BdApi.React;
 
-module.exports = (() => {
-	const config = {
+const { Webpack, Webpack: { Filters }, Data, DOM, Patcher } = BdApi,
+
+	config = {
 		info: {
-			name: "HideChannels",
-			authors: [
-				{
-					name: "CapnKitten",
-					discord_id: "405126960902176768",
-					github_username: "CapnKitten"
-				}
-			],
-			version: "1.0.6",
-			description: "Allows you to hide the channels list in servers and DMs.",
-			github: "https://github.com/CapnKitten/BetterDiscord/blob/master/Plugins/HideChannels/HideChannels.plugin.js",
-			github_raw: "https://raw.githubusercontent.com/CapnKitten/BetterDiscord/master/Plugins/HideChannels/HideChannels.plugin.js"
+			name: "Hide Channels",
+			id: "HideChannels",
+			description: "Hide channel list from view.",
+			version: "2.2.11",
+			author: "Farcrada",
+			updateUrl: "https://raw.githubusercontent.com/Farcrada/DiscordPlugins/master/Hide-Channels/HideChannels.plugin.js"
 		},
-		changelog: [
-			{
-				title: "Bug Fix",
-				type: "added",
-				items: [
-					"Fixed a bug where the toggle button would stop working"
-				]
-			}
-		]
-	};
+		constants: {
+			//The names we need for CSS
+			cssStyle: "HideChannelsStyle",
+			hideElementsName: "hideChannelElement",
+			buttonID: "toggleChannels",
+			buttonHidden: "channelsHidden",
+			buttonVisible: "channelsVisible"
+		}
+	}
 
-	return !global.ZeresPluginLibrary ? class {
-		constructor() { this._config = config; }
-		getName() { return config.info.name; }
-		getAuthor() { return config.info.authors.map(a => a.name).join(", "); }
-		getDescription() { return config.info.description; }
-		getVersion() { return config.info.version; }
-		load() {
-			BdApi.showConfirmationModal("Library plugin is needed",
-				[`The library plugin needed for ${config.info.name} is missing. Please click Download Now to install it.`], {
-				confirmText: "Download",
-				cancelText: "Cancel",
-				onConfirm: () => {
-					require("request").get("https://rauenzi.github.io/BDPluginLibrary/release/0PluginLibrary.plugin.js", async (error, response, body) => {
-					if (error) return require("electron").shell.openExternal("https://betterdiscord.net/ghdl?url=https://raw.githubusercontent.com/rauenzi/BDPluginLibrary/master/release/0PluginLibrary.plugin.js");
-						await new Promise(r => require("fs").writeFile(require("path").join(BdApi.Plugins.folder, "0PluginLibrary.plugin.js"), body, r));
-					});
-				}
+
+module.exports = class HideChannels {
+
+
+	load() {
+		try { global.ZeresPluginLibrary.PluginUpdater.checkForUpdate(config.info.name, config.info.version, config.info.updateUrl); }
+		catch (err) { console.error(config.info.name, "Failed to reach the ZeresPluginLibrary for Plugin Updater.", err); }
+	}
+
+	start() {
+		try {
+			//React components for settings
+			this.WindowInfoStore = Webpack.getModule(Filters.byKeys("isFocused", "isElementFullScreen"));
+
+			this.KeybindToCombo = Webpack.getModule(Filters.byStrings("numpad plus"), { searchExports: true });
+			this.KeybindToString = Webpack.getModule(Filters.byStrings(".join(\"+\")"), { searchExports: true });
+
+			//The sidebar to "minimize"/hide
+			this.sidebarClass = Webpack.getModule(Filters.byKeys("container", "base")).sidebar;
+			this.headerBarClass = Webpack.getModule(Filters.byKeys("chat", "title")).title;
+
+			//And the keybind
+			this.animation = this.checkKeybindLoad(Data.load(config.info.id, "animation")) ?? true;
+			this.keybindSetting = this.checkKeybindLoad(Data.load(config.info.id, "keybind"));
+			this.keybind = this.keybindSetting.split('+');
+
+			//Predefine for the eventlistener
+			this.currentlyPressed = {};
+
+			this.generateCSS();
+
+			//Render the button and we're off to the races!
+			const filter = f => f?.Icon && f.Title,
+				modules = Webpack.getModule(m => Object.values(m).some(filter), { first: false });
+			for (const module of modules) {
+				const HeaderBar = [module, Object.keys(module).find(k => filter(module[k]))];
+				this.patchTitleBar(HeaderBar);
+			}
+		}
+		catch (err) {
+			try {
+				console.error("Attempting to stop after starting error...", err)
+				this.stop();
+			}
+			catch (err) {
+				console.error(config.info.name + ".stop()", err);
+			}
+		}
+	}
+
+	getSettingsPanel() {
+		//Settings window is lazy loaded so we need to cache this after it's been loaded (i.e. open settings).
+		//This also allows for a (delayed) call to retrieve a way to prompt a Form
+		if (!this.KeybindRecorder) {
+			this.KeybindRecorder = Webpack.getModule(m => m.prototype?.cleanUp);
+			this.FormItem = Webpack.getModule(Filters.byRegex(/(case .\.LEGEND:)/), { searchExports: true });
+			this.SwitchItem = Webpack.getModule(Filters.byStrings("=e.note", "checked:"), { searchExports: true });
+		}
+
+		//Return our keybind settings wrapped in a form item
+		return () => {
+			const [animation, setanimation] = React.useState(this.animation);
+
+			return [
+				React.createElement(this.SwitchItem, {
+					value: animation,
+					note: "Enable the hide animation. Useful if the animation is \"unstatisfactory\".",
+					onChange: (newState) => {
+						//Save new state
+						this.animation = newState;
+						Data.save(config.info.id, "animation", newState);
+						setanimation(newState);
+
+						//Update CSS to reflect new settings.
+						this.generateCSS()
+					}
+				}, "Enable Hide Animation"),
+				React.createElement(this.FormItem, {
+					tag: "h5"
+				}, "Toggle by keybind:",
+					//Containing a keybind recorder.
+					React.createElement(this.KeybindRecorder, {
+						//The `keyup` and `keydown` events register the Ctrl key different
+						//We need to accomodate for that
+						defaultValue: this.KeybindToCombo(this.keybindSetting.replace("control", "ctrl")),
+						onChange: (e) => {
+							//Convert the keybind to current locale
+							//Once again accomodate for event differences
+							const keybindString = this.KeybindToString(e).toLowerCase().replace("ctrl", "control");
+
+							//Set the keybind and save it.
+							Data.save(config.info.id, "keybind", keybindString);
+							//And the keybindSetting
+							this.keybindSetting = keybindString;
+							this.keybind = keybindString.split('+');
+						}
+					}))];
+		}
+	}
+
+	stop() {
+		Patcher.unpatchAll(config.info.id);
+
+		//Our CSS
+		DOM.removeStyle(config.constants.cssStyle);
+
+		//And if there are remnants of css left,
+		//make sure we remove the class from the sidebar to ensure visual confirmation.
+		let sidebar = document.querySelector(`.${this.sidebarClass}`);
+		if (sidebar?.classList.contains(config.constants.hideElementsName))
+			sidebar.classList.remove(config.constants.hideElementsName);
+	}
+
+	/**
+	 * @param {object[]} headerBar The module and the export's name (as a string) that contains it
+	 */
+	patchTitleBar(headerBar) {
+		Patcher.before(config.info.id, ...headerBar, (thisObject, methodArguments, returnValue) => {
+			//When elements are being re-rendered we need to check if there actually is a place for us.
+			//Along with that we need to check if what we're adding to is an array.
+			if (Array.isArray(methodArguments[0]?.children))
+				if (methodArguments[0].children.some?.(child =>
+					//Make sure we're on the "original" headerbar and not that of a Voice channel's chat, or thread.
+					child?.props?.channel ||
+					//The friends page
+					child?.type?.Header ||
+					//The Nitro page
+					child?.props?.children === "Nitro" ||
+					//Home page of certain servers. This is gonna be broken next update, calling it.
+					child?.props?.children?.some?.(grandChild => typeof grandChild === 'string')))
+
+					//Make sure our component isn't already present.
+					if (!methodArguments[0].children.some?.(child => child?.key === config.info.id))
+						//And since we want to be on the most left of the header bar for style we unshift into the array.
+						methodArguments[0].children.unshift?.(React.createElement(this.hideChannelComponent, { key: config.info.id }));
+
+
+		});
+	}
+
+	/**
+	 * React component for our button.
+	 * @returns React element
+	 */
+	hideChannelComponent = () => {
+		//Only fetch the sidebar on a rerender.
+		const sidebarNode = document.querySelector(`.${this.sidebarClass}`),
+			//When a state updates, it rerenders.
+			[hidden, setHidden] = React.useState(
+				//Check on a rerender where our side bar is so we can correctly reflect this.
+				sidebarNode?.classList.contains(config.constants.hideElementsName));
+
+		/**
+		 * Use this to make a despensable easy to use listener with React.
+		 * @param {string} eventName The name of the event to listen for.
+		 * @param {callback} callback Function to call when said event is triggered.
+		 * @param {boolean} bubbling Handle bubbling or not
+		 * @param {object} [target] The object to attach our listener to.
+		 */
+		function useListener(eventName, callback, bubbling, target = window) {
+			React.useEffect(() => {
+				//ComponentDidMount
+				target.addEventListener(eventName, callback, bubbling);
+				//ComponentWillUnmount
+				return () => target.removeEventListener(eventName, callback, bubbling);
 			});
 		}
-		start() { }
-		stop() { }
-	} : (([Plugin, Api]) => {
-		const plugin = (Plugin, Api) => {
-			const { Settings, PluginUtilities, Patcher } = Api;
-			const { SettingPanel, SettingGroup, SettingField, Textbox, Switch } = Settings;
 
-			const buttonName = 'toggleChannels',
-				buttonHideName = 'channelsVisible',
-				buttonShowName = 'channelsHidden',
-				hideElementsName = 'hideElement',
-				targetElement = '.container-1r6BKw',
-				sidebarName = '.sidebar-2K8pFh';
+		function useWindowChangeListener(windowStore, callback) {
+			React.useEffect(() => {
+				windowStore.addChangeListener(callback);
+				return () => windowStore.removeChangeListener(callback);
+			});
+		}
 
-			return class HideChannels extends Plugin {
+		/**
+		 * @param {Node} sidebar Sidebar node we want to toggle.
+		 * @returns The passed state in reverse.
+		 */
+		function toggleSidebar(sidebar) {
 
-				onStart() {
-					PluginUtilities.addStyle(config.info.name + 'CSS',
-						`
-						#toggleChannels { position: absolute; width: 24px; height: 24px; top: 0; left: 8px; bottom: 0; margin: auto 0; background-position: center; background-size: 100%; opacity: 0.8; z-index: 2; cursor: pointer; }
-						.theme-dark #toggleChannels.channelsVisible { background-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiIgd2lkdGg9IjE4cHgiIGhlaWdodD0iMThweCI+PHBhdGggZD0iTTE4LjQxIDE2LjU5TDEzLjgyIDEybDQuNTktNC41OUwxNyA2bC02IDYgNiA2ek02IDZoMnYxMkg2eiIvPjxwYXRoIGQ9Ik0yNCAyNEgwVjBoMjR2MjR6IiBmaWxsPSJub25lIi8+PC9zdmc+); }
-						.theme-dark #toggleChannels.channelsHidden { background-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiIgd2lkdGg9IjE4cHgiIGhlaWdodD0iMThweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgwVjB6IiBmaWxsPSJub25lIi8+PHBhdGggZD0iTTUuNTkgNy40MUwxMC4xOCAxMmwtNC41OSA0LjU5TDcgMThsNi02LTYtNnpNMTYgNmgydjEyaC0yeiIvPjwvc3ZnPg==); }
-						.theme-light #toggleChannels.channelsVisible { background-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzRmNTY2MCIgd2lkdGg9IjE4cHgiIGhlaWdodD0iMThweCI+PHBhdGggZD0iTTE4LjQxIDE2LjU5TDEzLjgyIDEybDQuNTktNC41OUwxNyA2bC02IDYgNiA2ek02IDZoMnYxMkg2eiIvPjxwYXRoIGQ9Ik0yNCAyNEgwVjBoMjR2MjR6IiBmaWxsPSJub25lIi8+PC9zdmc+); }
-						.theme-light #toggleChannels.channelsHidden { background-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzRmNTY2MCIgd2lkdGg9IjE4cHgiIGhlaWdodD0iMThweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgwVjB6IiBmaWxsPSJub25lIi8+PHBhdGggZD0iTTUuNTkgNy40MUwxMC4xOCAxMmwtNC41OSA0LjU5TDcgMThsNi02LTYtNnpNMTYgNmgydjEyaC0yeiIvPjwvc3ZnPg==); }
-						.hideElement { width: 0 !important; }
-						.sidebar-2K8pFh .container-3baos1 { transition: 400ms ease all; }
-						.sidebar-2K8pFh.hideElement .container-3baos1 { position: absolute; box-sizing: border-box; width: 240px; height: 68px; bottom: 0; margin-bottom: 0; padding: 0 8px; z-index: 2; }
-						.sidebar-2K8pFh.hideElement .container-3baos1 { background-color: var(--background-primary); }
-						.sidebar-2K8pFh + .chat-3bRxxu .messagesWrapper-1sRNjr + .form-2fGMdU { margin-left: 0; transition: 400ms ease margin-left; }
-						.sidebar-2K8pFh.hideElement + .chat-3bRxxu .messagesWrapper-1sRNjr + .form-2fGMdU { margin-left: 240px; }
-						.sidebar-2K8pFh, .hideElement { transition: width 400ms ease; }
-						.children-19S4PO { padding-left: 24px; }`
-					);
+			/**
+			 * Adds and removes our CSS to make our sidebar appear and disappear.
+			 * @param {boolean} state State that determines the toggle.
+			 * @returns The passed state in reverse.
+			 */
+			return state => {
+				//If it is showing, we need to hide it.
+				if (!state)
+					//We hide it through CSS by adding a class.
+					sidebar?.classList.add(config.constants.hideElementsName);
+				//If it is hidden, we need to show it.
+				else
+					sidebar?.classList.remove(config.constants.hideElementsName);
 
-					this.renderButton();
-					this.addExtras();
-				}
-
-				onStop() {
-					PluginUtilities.removeStyle(config.info.name + 'CSS');
-					Patcher.unpatchAll();
-
-					this.removeExtras();
-				}
-
-				onSwitch() {
-					const checkButton = document.getElementById(buttonName);
-
-					if (!checkButton) this.renderButton();
-				}
-
-				renderButton() {
-					const button = document.createElement('div'),
-						titleBar = document.querySelector(targetElement),
-						settings = this.loadSettings();
-
-					var buttonClass;
-
-					if (settings.HideChannels.channelsHidden == true)
-						buttonClass = buttonShowName;
-					else
-						buttonClass = buttonHideName;
-
-					button.setAttribute('id', buttonName);
-					button.setAttribute('class', buttonClass);
-
-					titleBar.append(button);
-
-					let buttonAction = document.getElementById(buttonName);
-					buttonAction.addEventListener('click', ()=> this.toggleChannels());
-
-				}
-
-				toggleChannels() {
-					const button = document.getElementById(buttonName),
-						sidebar = document.querySelector(sidebarName);
-
-					if (button.classList.contains(buttonHideName)) {
-						button.setAttribute('class', buttonShowName);
-						sidebar.classList.add(hideElementsName);
-
-						this.saveSettings(true);
-					} else if (button.classList.contains(buttonShowName)) {
-						button.setAttribute('class', buttonHideName);
-						sidebar.classList.remove(hideElementsName);
-
-						this.saveSettings(false);
-					}
-				}
-
-				addExtras() {
-					const sidebar = document.querySelector(sidebarName),
-						settings = this.loadSettings();
-
-					if (settings.HideChannels.channelsHidden == true) {
-						setTimeout(function() {
-							sidebar.classList.add(hideElementsName);
-						}, 2500);
-					}
-				}
-
-				removeExtras() {
-					const button = document.getElementById(buttonName);
-					if (button) button.remove();
-
-					const sidebar = document.querySelector(sidebarName);
-					if (sidebar.classList.contains(hideElementsName))
-						sidebar.classList.remove(hideElementsName);
-				}
-
-				get defaultSettings() {
-					return {
-						HideChannels: {
-							channelsHidden: false
-						}
-					}
-				}
-
-				loadSettings() {
-					BdApi.loadData(this.getName(), 'settings');
-					var settings = (BdApi.loadData(this.getName(), 'settings')) ? BdApi.loadData(this.getName(), 'settings') : this.defaultSettings;
-
-					return settings;
-				}
-
-				saveSettings(status) {
-					const settings = this.loadSettings();
-
-					settings.HideChannels.channelsHidden = status;
-					BdApi.saveData(this.getName(), 'settings', settings);
-				}
+				return !state;
 			};
-		};
+		}
 
-		return plugin(Plugin, Api);
-	})(global.ZeresPluginLibrary.buildPlugin(config));
-})();
+		//Keydown event
+		useListener("keydown", e => {
+			//Since we made this an object,
+			//we can make new properties with `[]`
+			if (e?.key?.toLowerCase)
+				this.currentlyPressed[e.key.toLowerCase()] = true;
+
+			//Account for bubbling
+		}, true);
+
+		//Keyup event
+		useListener("keyup", e => {
+			//Check if every currentlyPessed is in our saved keybind.
+			if (this.keybind.every(key => this.currentlyPressed[key.toLowerCase()] === true))
+				//Toggle the sidebar and rerender on toggle; change the state
+				setHidden(toggleSidebar(sidebarNode));
+
+			//Current key goes up, so...
+			this.currentlyPressed[e.key.toLowerCase()] = false;
+
+			//Account for bubbling
+		}, true);
+
+		//Lose focus event
+		useWindowChangeListener(this.WindowInfoStore, () => {
+			//Clear when it gets back into focus
+			if (this.WindowInfoStore.isFocused())
+				this.currentlyPressed = {};
+		});
+
+		//Return our element.
+		return React.createElement("div", {
+			//Styling
+			id: config.constants.buttonID,
+			//The icon
+			className: hidden ? config.constants.buttonHidden : config.constants.buttonVisible,
+			//Toggle the sidebar and rerender on toggle; change the state.
+			onClick: () => setHidden(toggleSidebar(sidebarNode))
+		});
+	}
+
+	/**
+	 * Checks the given keybind for validity. If not valid returns a default keybind.
+	 * @param {String|Array.<number>|Array.<Array.<number>>} keybindToLoad The keybind to filter and load in.
+	 * @param {String} [defaultKeybind] A default keybind to fall back on in case of invalidity.
+	 * @returns Will return the keybind or return a default keybind.
+	 */
+	checkKeybindLoad(keybindToLoad, defaultKeybind = "control+h") {
+		defaultKeybind = defaultKeybind.toLowerCase().replace("ctrl", "control");
+
+		//If no keybind
+		if (!keybindToLoad)
+			return defaultKeybind;
+
+		//Error sensitive, so just plump it into a try-catch
+		try {
+			//If it's already a string, double check it
+			if (typeof (keybindToLoad) === typeof (defaultKeybind)) {
+				keybindToLoad = keybindToLoad.toLowerCase().replace("control", "ctrl");
+				//Does it go into a combo? (i.e.: is it the correct format?)
+				if (this.KeybindToCombo(keybindToLoad))
+					return keybindToLoad.replace("ctrl", "control");
+				else
+					return defaultKeybind;
+			}
+			else
+				//If it's not a string, check if it's a combo.
+				if (this.KeybindToString(keybindToLoad))
+					return this.KeybindToString(keybindToLoad).toLowerCase().replace("ctrl", "control");
+		}
+		catch (e) { return defaultKeybind; }
+	}
+
+	generateCSS() {
+		//Check if there is any CSS we have already, and remove it.
+		DOM.removeStyle(config.constants.cssStyle);
+
+		//Now inject our (new) CSS
+		DOM.addStyle(config.constants.cssStyle, `
+/* Button CSS */
+#${config.constants.buttonID} {
+    min-width: 24px;
+    height: 24px;
+    background-position: center !important;
+    background-size: 100% !important;
+    opacity: 0.8;
+    cursor: pointer;
+}
+
+/* How the button looks */
+.theme-dark #${config.constants.buttonID}.${config.constants.buttonVisible} {
+    background: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiIgd2lkdGg9IjE4cHgiIGhlaWdodD0iMThweCI+PHBhdGggZD0iTTE4LjQxIDE2LjU5TDEzLjgyIDEybDQuNTktNC41OUwxNyA2bC02IDYgNiA2ek02IDZoMnYxMkg2eiIvPjxwYXRoIGQ9Ik0yNCAyNEgwVjBoMjR2MjR6IiBmaWxsPSJub25lIi8+PC9zdmc+) no-repeat;
+}
+.theme-dark #${config.constants.buttonID}.${config.constants.buttonHidden} {
+    background: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiIgd2lkdGg9IjE4cHgiIGhlaWdodD0iMThweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgwVjB6IiBmaWxsPSJub25lIi8+PHBhdGggZD0iTTUuNTkgNy40MUwxMC4xOCAxMmwtNC41OSA0LjU5TDcgMThsNi02LTYtNnpNMTYgNmgydjEyaC0yeiIvPjwvc3ZnPg==) no-repeat;
+}
+/* In light theme */
+.theme-light #${config.constants.buttonID}.${config.constants.buttonVisible} {
+    background: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzRmNTY2MCIgd2lkdGg9IjE4cHgiIGhlaWdodD0iMThweCI+PHBhdGggZD0iTTE4LjQxIDE2LjU5TDEzLjgyIDEybDQuNTktNC41OUwxNyA2bC02IDYgNiA2ek02IDZoMnYxMkg2eiIvPjxwYXRoIGQ9Ik0yNCAyNEgwVjBoMjR2MjR6IiBmaWxsPSJub25lIi8+PC9zdmc+) no-repeat;
+}
+.theme-light #${config.constants.buttonID}.${config.constants.buttonHidden} {
+    background: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzRmNTY2MCIgd2lkdGg9IjE4cHgiIGhlaWdodD0iMThweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgwVjB6IiBmaWxsPSJub25lIi8+PHBhdGggZD0iTTUuNTkgNy40MUwxMC4xOCAxMmwtNC41OSA0LjU5TDcgMThsNi02LTYtNnpNMTYgNmgydjEyaC0yeiIvPjwvc3ZnPg==) no-repeat;
+}
+
+/* Attached CSS to sidebar */
+.${config.constants.hideElementsName} {
+    width: 0 !important;
+}
+
+/* Set animations */
+.${this.sidebarClass} {
+    ${this.animation ? "transition: width 400ms ease;" : ""}
+	overflow: hidden;
+}`);
+	}
+}
