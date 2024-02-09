@@ -2,7 +2,7 @@
  * @name MessageUtilities
  * @author DevilBro
  * @authorId 278543574059057154
- * @version 1.9.2
+ * @version 1.9.8
  * @description Adds several Quick Actions for Messages (Delete, Edit, Pin, etc.)
  * @invite Jx3TjNS
  * @donate https://www.paypal.me/MircoWittrien
@@ -13,33 +13,26 @@
  */
 
 module.exports = (_ => {
-	const config = {
-		"info": {
-			"name": "MessageUtilities",
-			"author": "DevilBro",
-			"version": "1.9.2",
-			"description": "Adds several Quick Actions for Messages (Delete, Edit, Pin, etc.)"
-		}
+	const changeLog = {
+		
 	};
 
-	return (window.Lightcord || window.LightCord) ? class {
-		getName () {return config.info.name;}
-		getAuthor () {return config.info.author;}
-		getVersion () {return config.info.version;}
-		getDescription () {return "Do not use LightCord!";}
-		load () {BdApi.alert("Attention!", "By using LightCord you are risking your Discord Account, due to using a 3rd Party Client. Switch to an official Discord Client (https://discord.com/) with the proper BD Injection (https://betterdiscord.app/)");}
-		start() {}
-		stop() {}
-	} : !window.BDFDB_Global || (!window.BDFDB_Global.loaded && !window.BDFDB_Global.started) ? class {
-		getName () {return config.info.name;}
-		getAuthor () {return config.info.author;}
-		getVersion () {return config.info.version;}
-		getDescription () {return `The Library Plugin needed for ${config.info.name} is missing. Open the Plugin Settings to download it. \n\n${config.info.description}`;}
+	return !window.BDFDB_Global || (!window.BDFDB_Global.loaded && !window.BDFDB_Global.started) ? class {
+		constructor (meta) {for (let key in meta) this[key] = meta[key];}
+		getName () {return this.name;}
+		getAuthor () {return this.author;}
+		getVersion () {return this.version;}
+		getDescription () {return `The Library Plugin needed for ${this.name} is missing. Open the Plugin Settings to download it. \n\n${this.description}`;}
 		
 		downloadLibrary () {
-			require("request").get("https://mwittrien.github.io/BetterDiscordAddons/Library/0BDFDB.plugin.js", (e, r, b) => {
-				if (!e && b && r.statusCode == 200) require("fs").writeFile(require("path").join(BdApi.Plugins.folder, "0BDFDB.plugin.js"), b, _ => BdApi.showToast("Finished downloading BDFDB Library", {type: "success"}));
-				else BdApi.alert("Error", "Could not download BDFDB Library Plugin. Try again later or download it manually from GitHub: https://mwittrien.github.io/downloader/?library");
+			BdApi.Net.fetch("https://mwittrien.github.io/BetterDiscordAddons/Library/0BDFDB.plugin.js").then(r => {
+				if (!r || r.status != 200) throw new Error();
+				else return r.text();
+			}).then(b => {
+				if (!b) throw new Error();
+				else return require("fs").writeFile(require("path").join(BdApi.Plugins.folder, "0BDFDB.plugin.js"), b, _ => BdApi.showToast("Finished downloading BDFDB Library", {type: "success"}));
+			}).catch(error => {
+				BdApi.alert("Error", "Could not download BDFDB Library Plugin. Try again later or download it manually from GitHub: https://mwittrien.github.io/downloader/?library");
 			});
 		}
 		
@@ -47,7 +40,7 @@ module.exports = (_ => {
 			if (!window.BDFDB_Global || !Array.isArray(window.BDFDB_Global.pluginQueue)) window.BDFDB_Global = Object.assign({}, window.BDFDB_Global, {pluginQueue: []});
 			if (!window.BDFDB_Global.downloadModal) {
 				window.BDFDB_Global.downloadModal = true;
-				BdApi.showConfirmationModal("Library Missing", `The Library Plugin needed for ${config.info.name} is missing. Please click "Download Now" to install it.`, {
+				BdApi.showConfirmationModal("Library Missing", `The Library Plugin needed for ${this.name} is missing. Please click "Download Now" to install it.`, {
 					confirmText: "Download Now",
 					cancelText: "Cancel",
 					onCancel: _ => {delete window.BDFDB_Global.downloadModal;},
@@ -57,13 +50,13 @@ module.exports = (_ => {
 					}
 				});
 			}
-			if (!window.BDFDB_Global.pluginQueue.includes(config.info.name)) window.BDFDB_Global.pluginQueue.push(config.info.name);
+			if (!window.BDFDB_Global.pluginQueue.includes(this.name)) window.BDFDB_Global.pluginQueue.push(this.name);
 		}
 		start () {this.load();}
 		stop () {}
 		getSettingsPanel () {
 			let template = document.createElement("template");
-			template.innerHTML = `<div style="color: var(--header-primary); font-size: 16px; font-weight: 300; white-space: pre; line-height: 22px;">The Library Plugin needed for ${config.info.name} is missing.\nPlease click <a style="font-weight: 500;">Download Now</a> to install it.</div>`;
+			template.innerHTML = `<div style="color: var(--header-primary); font-size: 16px; font-weight: 300; white-space: pre; line-height: 22px;">The Library Plugin needed for ${this.name} is missing.\nPlease click <a style="font-weight: 500;">Download Now</a> to install it.</div>`;
 			template.content.firstElementChild.querySelector("a").addEventListener("click", this.downloadLibrary);
 			return template.content.firstElementChild;
 		}
@@ -73,43 +66,46 @@ module.exports = (_ => {
 			DBLCLICK: 1
 		};
 		var firedEvents = [], clickTimeout;
-		var settings = {}, bindings = {}, enabledBindings = {}, toasts = {};
+		var enabledBindings = {};
 		
 		var ChannelTextAreaForm;
 		
 		return class MessageUtilities extends Plugin {
 			onLoad () {
 				this.defaults = {
-					settings: {
-						"addHints":					{value: true, 	description: "Add Key Combo hints to Context Menus"},
-						"clearOnEscape":			{value: true, 	description: "Clear Chat Input when Escape is pressed"}
+					general: {
+						"addHints":			{value: true, 	description: "Add Key Combo hints to Context Menus"},
+						"clearOnEscape":		{value: true, 	description: "Clear Chat Input when Escape is pressed"}
 					},
 					toasts: {},
+					bindingsState: {},
 					bindings: {
-						"Edit_Message":				{name: "Edit Message",			func: this.doEdit,		value: {click: 1, 	keycombo: []}		},
-						"Delete_Message":			{name: "Delete Message",		func: this.doDelete,	value: {click: 0, 	keycombo: [46]}		},
-						"Pin/Unpin_Message":		{name: "Pin/Unpin Message",		func: this.doPinUnPin,	value: {click: 0, 	keycombo: [17]}		},
-						"Reply_to_Message":			{name: "Reply to Message",		func: this.doReply,		value: {click: 0, 	keycombo: [17,72]}	},
-						"React_to_Message":			{name: "Open React Menu",		func: this.doOpenReact,	value: {click: 0, 	keycombo: [17,83]}	},
-						"Copy_Raw":					{name: "Copy raw Message",		func: this.doCopyRaw,	value: {click: 0, 	keycombo: [17,68]}	},
-						"Copy_Link":				{name: "Copy Message Link",		func: this.doCopyLink,	value: {click: 0, 	keycombo: [17,81]}	},
-						"__Quote_Message":			{name: "Quote Message",			func: this.doQuote,		value: {click: 0, 	keycombo: [17,87]}, plugin: "CustomQuoter"},
-						"__Note_Message":			{name: "Note Message",			func: this.doNote,		value: {click: 0, 	keycombo: [16]}, 	plugin: "PersonalPins"},
-						"__Translate_Message":		{name: "Translate Message",		func: this.doTranslate,	value: {click: 0, 	keycombo: [20]}, 	plugin: "Translator"}
+						"Edit_Message":			{name: "Edit Message",			func: this.doEdit,						value: {click: 1, keycombo: []}},
+						"Delete_Message":		{name: "Delete Message",		func: this.doDelete,						value: {click: 0, keycombo: [46]}},
+						"Pin/Unpin_Message":		{name: "Pin/Unpin Message",		func: this.doPinUnPin,						value: {click: 0, keycombo: [17]}},
+						"Reply_to_Message":		{name: "Reply to Message",		func: this.doReply,						value: {click: 0, keycombo: [17,72]}},
+						"React_to_Message":		{name: "Open React Menu",		func: this.doOpenReact,						value: {click: 0, keycombo: [17,83]}},
+						"Copy_Raw":			{name: "Copy raw Message",		func: this.doCopyRaw,						value: {click: 0, keycombo: [17,68]}},
+						"Copy_Link":			{name: "Copy Message Link",		func: this.doCopyLink,						value: {click: 0, keycombo: [17,81]}},
+						"__Quote_Message":		{name: "Quote Message",			func: this.doQuote, 		plugin: "CustomQuoter",		value: {click: 0, keycombo: [17,87]}},
+						"__Note_Message":		{name: "Note Message",			func: this.doNote, 		plugin: "PersonalPins",		value: {click: 0, keycombo: [16]}},
+						"__Translate_Message":		{name: "Translate Message",		func: this.doTranslate, 	plugin: "Translator",		value: {click: 0, keycombo: [20]}}
 					}
 				};
 				
-				this.patchedModules = {
-					before: {
-						Menu: "default",
-						Message: "default",
-						ChannelTextAreaForm: "render"
-					}
+				this.modulePatches = {
+					before: [
+						"Menu",
+						"Message"
+					],
+					after: [
+						"ChannelTextAreaForm"
+					]
 				};
 				
 				for (let type in this.defaults.bindings) {
 					let nativeAction = type.indexOf("__") != 0;
-					this.defaults.settings[type] = {value: nativeAction};
+					this.defaults.bindingsState[type] = {value: nativeAction};
 					if (nativeAction) this.defaults.toasts[type] = {value: type != "Edit_Message" && type != "React_to_Message" && type != "Quote_Message"};
 				}
 			}
@@ -136,18 +132,18 @@ module.exports = (_ => {
 						settingsItems.push(BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.CollapseContainer, {
 							title: "Settings",
 							collapseStates: collapseStates,
-							children: Object.keys(settings).map(key => this.defaults.settings[key].description && BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsSaveItem, {
+							children: Object.keys(this.defaults.general).map(key => BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsSaveItem, {
 								type: "Switch",
 								plugin: this,
-								keys: ["settings", key],
-								label: this.defaults.settings[key].description,
-								value: settings[key]
+								keys: ["general", key],
+								label: this.defaults.general[key].description,
+								value: this.settings.general[key]
 							}))
 						}));
 						settingsItems.push(BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.CollapseContainer, {
 							title: "Actions",
 							collapseStates: collapseStates,
-							children: Object.keys(bindings).map(action => {
+							children: Object.keys(this.defaults.bindings).map(action => {
 								if (this.defaults.bindings[action].plugin && !BDFDB.BDUtils.isPluginEnabled(this.defaults.bindings[action].plugin)) return null;
 								let keyRecorderIns, clickSelectorIns;
 								return BDFDB.ReactUtils.createElement("div", {
@@ -161,22 +157,22 @@ module.exports = (_ => {
 												BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsLabel, {
 													label: this.defaults.bindings[action].name + (this.defaults.bindings[action].plugin ? ` (${this.defaults.bindings[action].plugin})` : "")
 												}),
-												toasts[action] != undefined ? BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsSaveItem, {
+												this.settings.toasts[action] != undefined ? BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsSaveItem, {
 													type: "Switch",
 													mini: true,
 													plugin: this,
 													keys: ["toasts", action],
 													grow: 0,
-													label: "Show Confirmation Toast:",
-													value: toasts[action]
+													label: "Show Success Toast:",
+													value: this.settings.toasts[action]
 												}) : null
 											].filter(n => n)
 										}),
 										BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.SettingsSaveItem, {
 											type: "Switch",
 											plugin: this,
-											keys: ["settings", action],
-											value: settings[action],
+											keys: ["bindingsState", action],
+											value: this.settings.bindingsState[action],
 											onChange: value => {
 												keyRecorderIns.props.disabled = !value;
 												clickSelectorIns.props.disabled = !value;
@@ -186,24 +182,24 @@ module.exports = (_ => {
 												direction: BDFDB.LibraryComponents.Flex.Direction.HORIZONTAL,
 												children: [
 													BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.KeybindRecorder, {
-														value: bindings[action].keycombo.filter(n => n),
+														value: this.settings.bindings[action].keycombo.filter(n => n),
 														reset: true,
-														disabled: !settings[action],
+														disabled: !this.settings.bindingsState[action],
 														ref: instance => {if (instance) keyRecorderIns = instance;},
 														onChange: value => {
-															bindings[action].keycombo = value;
-															BDFDB.DataUtils.save(bindings, this, "bindings");
+															this.settings.bindings[action].keycombo = value;
+															BDFDB.DataUtils.save(this.settings.bindings, this, "bindings");
 															this.SettingsUpdated = true;
 														}
 													}),
 													BDFDB.ReactUtils.createElement(BDFDB.LibraryComponents.Select, {
-														value: bindings[action].click,
+														value: this.settings.bindings[action].click,
 														options: Object.keys(clickMap).map((label, i) => ({value: i, label: label})),
-														disabled: !settings[action],
+														disabled: !this.settings.bindingsState[action],
 														ref: instance => {if (instance) clickSelectorIns = instance;},
 														onChange: value => {
-															bindings[action].click = value;
-															BDFDB.DataUtils.save(bindings, this, "bindings");
+															this.settings.bindings[action].click = value;
+															BDFDB.DataUtils.save(this.settings.bindings, this, "bindings");
 															this.SettingsUpdated = true;
 														}
 													})
@@ -240,10 +236,7 @@ module.exports = (_ => {
 			}
 			
 			forceUpdateAll () {
-				settings = BDFDB.DataUtils.get(this, "settings");
-				bindings = BDFDB.DataUtils.get(this, "bindings");
-				enabledBindings = BDFDB.ObjectUtils.filter(bindings, action => settings[action], true);
-				toasts = BDFDB.DataUtils.get(this, "toasts");
+				enabledBindings = BDFDB.ObjectUtils.filter(this.settings.bindings, action => this.settings.bindingsState[action], true);
 				
 				BDFDB.MessageUtils.rerenderAll();
 				BDFDB.PatchUtils.forceAllUpdates(this);
@@ -255,7 +248,7 @@ module.exports = (_ => {
 					if (group && group.type == BDFDB.LibraryComponents.MenuItems.MenuGroup && BDFDB.ArrayUtils.is(group.props.children)) for (let item of group.props.children) {
 						if (item && item.props && item.props.id && !item.props.hint && !item.props.children) {
 							let hint, action;
-							if (item.props.id == "mark-unread") hint = settings.addHints && `${BDFDB.LibraryModules.KeyCodeUtils.getString(18)}+CLICK`;
+							if (item.props.id == "mark-unread") hint = this.settings.general.addHints && `${BDFDB.LibraryModules.KeyCodeUtils.getString(18)}+CLICK`;
 							else {
 								switch (item.props.id) {
 									case "copy-link":
@@ -315,23 +308,23 @@ module.exports = (_ => {
 				let type = event.type;
 				if (!firedEvents.includes(type)) {
 					firedEvents.push(type);
-					let priorityAction = null;
-					let clickType = clickMap[type.toUpperCase()];
-					for (let action in enabledBindings) {
-						let binding = enabledBindings[action];
-						let priorityBinding = enabledBindings[priorityAction];
-						if (this.checkIfBindingIsValid(binding, clickType) && (!enabledBindings[priorityAction] || binding.click > priorityBinding.click || binding.keycombo.length > priorityBinding.keycombo.length)) priorityAction = action;
-					}
-					if (priorityAction) {
-						let messageDiv = BDFDB.DOMUtils.getParent(BDFDB.dotCNC.message + BDFDB.dotCN.searchresultsmessage, event.target);
-						if (messageDiv) {
+					let messageDiv = BDFDB.DOMUtils.getParent(BDFDB.dotCNC.message + BDFDB.dotCN.searchresultsmessage, event.target);
+					if (messageDiv) {
+						let priorityAction = null;
+						let clickType = clickMap[type.toUpperCase()];
+						for (let action in enabledBindings) {
+							let binding = enabledBindings[action];
+							let priorityBinding = enabledBindings[priorityAction];
+							if (this.checkIfBindingIsValid(binding, clickType) && this.checkIfActionIsValid({messageDiv, message}, action, event) && (!enabledBindings[priorityAction] || binding.click > priorityBinding.click || binding.keycombo.length > priorityBinding.keycombo.length)) priorityAction = action;
+						}
+						if (priorityAction) {
 							BDFDB.ListenerUtils.stopEvent(event);
 							BDFDB.TimeUtils.clear(clickTimeout);
 							if (!this.hasDoubleClickOverwrite(enabledBindings[priorityAction])) {
-								BDFDB.TimeUtils.suppress(_ => this.defaults.bindings[priorityAction].func.apply(this, [{messageDiv, message}, priorityAction, event]), "", this)();
+								BDFDB.TimeUtils.suppress(_ => this.defaults.bindings[priorityAction].func.apply(this, [true, {messageDiv, message}, priorityAction, event]), "", this)();
 							}
 							else clickTimeout = BDFDB.TimeUtils.timeout(_ => {
-								BDFDB.TimeUtils.suppress(_ => this.defaults.bindings[priorityAction].func.apply(this, [{messageDiv, message}, priorityAction, event]), "", this)();
+								BDFDB.TimeUtils.suppress(_ => this.defaults.bindings[priorityAction].func.apply(this, [true, {messageDiv, message}, priorityAction, event]), "", this)();
 							}, 500);
 						}
 					}
@@ -342,8 +335,8 @@ module.exports = (_ => {
 			onKeyDown (event) {
 				let type = event.type;
 				if (!firedEvents.includes(type)) {
-					if (event.which == 27 && settings.clearOnEscape && ChannelTextAreaForm) {
-						ChannelTextAreaForm.setState({textValue: "", richValue: BDFDB.LibraryModules.SlateUtils.deserialize("")});
+					if (event.which == 27 && this.settings.general.clearOnEscape && ChannelTextAreaForm) {
+						ChannelTextAreaForm.setState({textValue: "", richValue: BDFDB.SlateUtils.toRichValue("")});
 					}
 					BDFDB.TimeUtils.timeout(_ => {BDFDB.ArrayUtils.remove(firedEvents, type, true)});
 				}
@@ -353,6 +346,10 @@ module.exports = (_ => {
 				if (binding.click != clickType) return false;
 				for (let key of binding.keycombo) if (!BDFDB.ListenerUtils.isPressed(key)) return false;
 				return true;
+			}
+
+			checkIfActionIsValid ({messageDiv, message}, action, event) {
+				return BDFDB.TimeUtils.suppress(_ => this.defaults.bindings[action].func.apply(this, [false, {messageDiv, message}, action, event]), "", this)()
 			}
 
 			hasDoubleClickOverwrite (binding) {
@@ -366,93 +363,133 @@ module.exports = (_ => {
 				return false;
 			}
 
-			doDelete ({messageDiv, message}, action, event) {
+			doDelete (execute, {messageDiv, message}, action, event) {
 				let deleteLink = messageDiv.parentElement.querySelector(BDFDB.dotCNS.messagelocalbotoperations + BDFDB.dotCN.anchor);
 				if (deleteLink) deleteLink.click();
-				else if (BDFDB.DiscordConstants.MessageTypesDeletable[message.type]) {
-					let channel = BDFDB.LibraryModules.ChannelStore.getChannel(message.channel_id);
+				else if (!BDFDB.DiscordConstants.MessageTypeGroups.UNDELETABLE.has(message.type)) {
+					let channel = BDFDB.LibraryStores.ChannelStore.getChannel(message.channel_id);
 					if (channel && (BDFDB.UserUtils.can("MANAGE_MESSAGES") || message.author.id == BDFDB.UserUtils.me.id)) {
-						BDFDB.LibraryModules.MessageUtils.deleteMessage(message.channel_id, message.id, message.state != BDFDB.DiscordConstants.MessageStates.SENT);
-						if (toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.GUILD_SETTINGS_FOLLOWER_ANALYTICS_MESSAGE_DELETED), {type: "success"});
+						if (execute) {
+							BDFDB.LibraryModules.MessageUtils.deleteMessage(message.channel_id, message.id, message.state != BDFDB.DiscordConstants.MessageStates.SENT);
+							if (this.settings.toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(this.labels.toast_message_deleted), {type: "success"});
+						}
+						return true;
 					}
 				}
+				return false;
 			}
 
-			doEdit ({messageDiv, message}, action, event) {
+			doEdit (execute, {messageDiv, message}, action, event) {
 				if (message.author.id == BDFDB.UserUtils.me.id && !messageDiv.querySelector(BDFDB.dotCN.messagechanneltextarea)) {
-					BDFDB.LibraryModules.MessageUtils.startEditMessage(message.channel_id, message.id, message.content);
-					if (toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.EDITING_MESSAGE), {type: "success"});
+					if (execute) {
+						BDFDB.LibraryModules.MessageUtils.startEditMessage(message.channel_id, message.id, message.content);
+						if (this.settings.toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.EDITING_MESSAGE), {type: "success"});
+					}
+					return true;
 				}
+				return false;
 			}
 
-			doOpenReact ({messageDiv, message}, action, event) {
+			doOpenReact (execute, {messageDiv, message}, action, event) {
 				let reactButton = messageDiv.querySelector(`${BDFDB.dotCN.messagetoolbarbutton}[aria-label="${BDFDB.LanguageUtils.LanguageStrings.ADD_REACTION}"]`);
 				if (reactButton) {
-					reactButton.click();
-					if (toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.ADD_REACTIONS), {type: "success"});
+					if (execute) {
+						reactButton.click();
+						if (this.settings.toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.ADD_REACTIONS), {type: "success"});
+					}
+					return true;
 				}
+				return false;
 			}
 
-			doPinUnPin ({messageDiv, message}, action, event) {
+			doPinUnPin (execute, {messageDiv, message}, action, event) {
 				if (message.state == BDFDB.DiscordConstants.MessageStates.SENT) {
-					let channel = BDFDB.LibraryModules.ChannelStore.getChannel(message.channel_id);
-					if (channel && (BDFDB.DMUtils.isDMChannel(channel.id) || BDFDB.UserUtils.can("MANAGE_MESSAGES")) && (message.type == BDFDB.DiscordConstants.MessageTypes.DEFAULT || message.type == BDFDB.DiscordConstants.MessageTypes.REPLY)) {
-						if (message.pinned) {
-							BDFDB.LibraryModules.MessagePinUtils.unpinMessage(channel, message.id);
-							if (toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.MESSAGE_UNPINNED), {type: "danger"});
+					let channel = BDFDB.LibraryStores.ChannelStore.getChannel(message.channel_id);
+					if (channel && (BDFDB.DMUtils.isDMChannel(channel.id) || BDFDB.UserUtils.can("MANAGE_MESSAGES")) && BDFDB.DiscordConstants.MessageTypeGroups.USER_MESSAGE.has(message.type)) {
+						if (execute) {
+							if (message.pinned) {
+								BDFDB.LibraryModules.MessagePinUtils.unpinMessage(channel, message.id);
+								if (this.settings.toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.MESSAGE_UNPINNED), {type: "danger"});
+							}
+							else {
+								BDFDB.LibraryModules.MessagePinUtils.pinMessage(channel, message.id);
+								if (this.settings.toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.MESSAGE_PINNED), {type: "success"});
+							}
 						}
-						else {
-							BDFDB.LibraryModules.MessagePinUtils.pinMessage(channel, message.id);
-							if (toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.MESSAGE_PINNED), {type: "success"});
-						}
+						return true;
 					}
 				}
+				return false;
 			}
 			
-			doReply ({messageDiv, message}, action, event) {
+			doReply (execute, {messageDiv, message}, action, event) {
 				if (message.state == BDFDB.DiscordConstants.MessageStates.SENT) {
-					let channel = BDFDB.LibraryModules.ChannelStore.getChannel(message.channel_id);
-					if (channel && (BDFDB.DMUtils.isDMChannel(channel.id) || BDFDB.UserUtils.can("SEND_MESSAGES")) && (message.type == BDFDB.DiscordConstants.MessageTypes.DEFAULT || message.type == BDFDB.DiscordConstants.MessageTypes.REPLY)) {
-						BDFDB.LibraryModules.MessageManageUtils.replyToMessage(channel, message, event);
-						if (toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.NOTIFICATION_REPLY), {type: "success"});
+					let channel = BDFDB.LibraryStores.ChannelStore.getChannel(message.channel_id);
+					if (channel && (BDFDB.DMUtils.isDMChannel(channel.id) || BDFDB.UserUtils.can("SEND_MESSAGES")) && BDFDB.DiscordConstants.MessageTypeGroups.USER_MESSAGE.has(message.type)) {
+						if (execute) {
+							BDFDB.LibraryModules.MessageManageUtils.replyToMessage(channel, message, {});
+							if (this.settings.toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.NOTIFICATION_REPLY), {type: "success"});
+						}
+						return true;
 					}
 				}
+				return false;
 			}
 
-			doCopyRaw ({messageDiv, message}, action, event) {
+			doCopyRaw (execute, {messageDiv, message}, action, event) {
 				if (message.content) {
-					BDFDB.LibraryRequires.electron.clipboard.write({text: message.content});
-					if (toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.COPIED_TEXT), {type: "success"});
+					if (execute) {
+						BDFDB.LibraryModules.WindowUtils.copy(message.content);
+						if (this.settings.toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.COPIED_TEXT), {type: "success"});
+					}
+					return true;
 				}
+				return false;
 			}
 
-			doCopyLink ({messageDiv, message}, action, event) {
-				let channel = BDFDB.LibraryModules.ChannelStore.getChannel(message.channel_id);
+			doCopyLink (execute, {messageDiv, message}, action, event) {
+				let channel = BDFDB.LibraryStores.ChannelStore.getChannel(message.channel_id);
 				if (channel) {
-					BDFDB.LibraryModules.MessageManageUtils.copyLink(channel, message);
-					if (toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.LINK_COPIED), {type: "success"});
+					if (execute) {
+						BDFDB.LibraryModules.MessageManageUtils.copyLink(channel, message);
+						if (this.settings.toasts[action]) BDFDB.NotificationUtils.toast(this.formatToast(BDFDB.LanguageUtils.LanguageStrings.LINK_COPIED), {type: "success"});
+					}
+					return true;
 				}
+				return false;
 			}
 
-			doQuote ({messageDiv, message}, action, event) {
+			doQuote (execute, {messageDiv, message}, action, event) {
 				if (BDFDB.BDUtils.isPluginEnabled(this.defaults.bindings.__Quote_Message.plugin)) {
-					let channel = BDFDB.LibraryModules.ChannelStore.getChannel(message.channel_id);
-					if (channel) BDFDB.BDUtils.getPlugin(this.defaults.bindings.__Quote_Message.plugin).quote(channel, message);
+					let channel = BDFDB.LibraryStores.ChannelStore.getChannel(message.channel_id);
+					if (channel) {
+						if (execute) BDFDB.BDUtils.getPlugin(this.defaults.bindings.__Quote_Message.plugin).quote(channel, message);
+						return true;
+					}
 				}
+				return false;
 			}
 
-			doNote ({messageDiv, message}, action, event) {
+			doNote (execute, {messageDiv, message}, action, event) {
 				if (BDFDB.BDUtils.isPluginEnabled(this.defaults.bindings.__Note_Message.plugin)) {
-					let channel = BDFDB.LibraryModules.ChannelStore.getChannel(message.channel_id);
-					if (channel) BDFDB.BDUtils.getPlugin(this.defaults.bindings.__Note_Message.plugin).addMessageToNotes(message, channel);
+					let channel = BDFDB.LibraryStores.ChannelStore.getChannel(message.channel_id);
+					if (channel) {
+						if (execute) BDFDB.BDUtils.getPlugin(this.defaults.bindings.__Note_Message.plugin).addMessageToNotes(message, channel);
+						return true;
+					}
 				}
+				return false;
 			}
 
-			doTranslate ({messageDiv, message}, action, event) {
+			doTranslate (execute, {messageDiv, message}, action, event) {
 				if (BDFDB.BDUtils.isPluginEnabled(this.defaults.bindings.__Translate_Message.plugin)) {
-					let channel = BDFDB.LibraryModules.ChannelStore.getChannel(message.channel_id);
-					if (channel) BDFDB.BDUtils.getPlugin(this.defaults.bindings.__Translate_Message.plugin).translateMessage(message, channel);
+					let channel = BDFDB.LibraryStores.ChannelStore.getChannel(message.channel_id);
+					if (channel) {
+						if (execute) BDFDB.BDUtils.getPlugin(this.defaults.bindings.__Translate_Message.plugin).translateMessage(message, channel);
+						return true;
+					}
 				}
+				return false;
 			}
 			
 			formatToast (string) {
@@ -462,12 +499,133 @@ module.exports = (_ => {
 			getActiveShortcutString (action) {
 				if (!action) return null;
 				let str = [];
-				if (settings.addHints && settings[action] && enabledBindings[action]) {
+				if (this.settings.general.addHints && enabledBindings[action]) {
 					if (enabledBindings[action].keycombo.length) str.push(BDFDB.LibraryModules.KeyCodeUtils.getString(enabledBindings[action].keycombo));
 					str.push(Object.keys(clickMap).find(type => clickMap[type] == enabledBindings[action].click));
 				}
 				return str.join("+").replace(/ /g, "");
 			}
+
+			setLabelsByLanguage () {
+				switch (BDFDB.LanguageUtils.getLanguage().id) {
+					case "bg":		// Bulgarian
+						return {
+							toast_message_deleted:				"Съобщението беше успешно изтрито"
+						};
+					case "cs":		// Czech
+						return {
+							toast_message_deleted:				"Zpráva byla úspěšně smazána"
+						};
+					case "da":		// Danish
+						return {
+							toast_message_deleted:				"Beskeden blev slettet"
+						};
+					case "de":		// German
+						return {
+							toast_message_deleted:				"Nachricht wurde erfolgreich gelöscht"
+						};
+					case "el":		// Greek
+						return {
+							toast_message_deleted:				"Το μήνυμα διαγράφηκε με επιτυχία"
+						};
+					case "es":		// Spanish
+						return {
+							toast_message_deleted:				"El mensaje fue eliminado con éxito"
+						};
+					case "fi":		// Finnish
+						return {
+							toast_message_deleted:				"Viesti poistettiin onnistuneesti"
+						};
+					case "fr":		// French
+						return {
+							toast_message_deleted:				"Le message a été supprimé avec succès"
+						};
+					case "hi":		// Hindi
+						return {
+							toast_message_deleted:				"संदेश सफलतापूर्वक हटा दिया गया"
+						};
+					case "hr":		// Croatian
+						return {
+							toast_message_deleted:				"Poruka je uspješno izbrisana"
+						};
+					case "hu":		// Hungarian
+						return {
+							toast_message_deleted:				"Az üzenet sikeresen törölve"
+						};
+					case "it":		// Italian
+						return {
+							toast_message_deleted:				"Il messaggio è stato eliminato con successo"
+						};
+					case "ja":		// Japanese
+						return {
+							toast_message_deleted:				"メッセージは正常に削除されました"
+						};
+					case "ko":		// Korean
+						return {
+							toast_message_deleted:				"메시지가 성공적으로 삭제되었습니다."
+						};
+					case "lt":		// Lithuanian
+						return {
+							toast_message_deleted:				"Laiškas sėkmingai ištrintas"
+						};
+					case "nl":		// Dutch
+						return {
+							toast_message_deleted:				"Bericht is succesvol verwijderd"
+						};
+					case "no":		// Norwegian
+						return {
+							toast_message_deleted:				"Meldingen ble slettet"
+						};
+					case "pl":		// Polish
+						return {
+							toast_message_deleted:				"Wiadomość została pomyślnie usunięta"
+						};
+					case "pt-BR":	// Portuguese (Brazil)
+						return {
+							toast_message_deleted:				"A mensagem foi excluída com sucesso"
+						};
+					case "ro":		// Romanian
+						return {
+							toast_message_deleted:				"Mesajul a fost șters cu succes"
+						};
+					case "ru":		// Russian
+						return {
+							toast_message_deleted:				"Сообщение было успешно удалено"
+						};
+					case "sv":		// Swedish
+						return {
+							toast_message_deleted:				"Meddelandet har raderats"
+						};
+					case "th":		// Thai
+						return {
+							toast_message_deleted:				"ลบข้อความเรียบร้อยแล้ว"
+						};
+					case "tr":		// Turkish
+						return {
+							toast_message_deleted:				"Mesaj başarıyla silindi"
+						};
+					case "uk":		// Ukrainian
+						return {
+							toast_message_deleted:				"Повідомлення було успішно видалено"
+						};
+					case "vi":		// Vietnamese
+						return {
+							toast_message_deleted:				"Tin nhắn đã được xóa thành công"
+						};
+					case "zh-CN":	// Chinese (China)
+						return {
+							toast_message_deleted:				"消息已成功删除"
+						};
+					case "zh-TW":	// Chinese (Taiwan)
+						return {
+							toast_message_deleted:				"消息已成功刪除"
+						};
+					default:		// English
+						return {
+							toast_message_deleted:				"Message was successfully deleted"
+						};
+				}
+			}
 		};
-	})(window.BDFDB_Global.PluginUtils.buildPlugin(config));
+	})(window.BDFDB_Global.PluginUtils.buildPlugin(changeLog));
 })();

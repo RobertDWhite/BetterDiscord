@@ -1,12 +1,11 @@
 /**
  * @name RoleMembers
- * @version 0.1.14
- * @authorLink https://twitter.com/IAmZerebos
- * @donate https://paypal.me/ZackRauen
- * @patreon https://patreon.com/Zerebos
+ * @description Allows you to see the members of each role on a server.
+ * @version 0.1.21
+ * @author Zerebos
+ * @authorId 249746236008169473
  * @website https://github.com/rauenzi/BetterDiscordAddons/tree/master/Plugins/RoleMembers
  * @source https://raw.githubusercontent.com/rauenzi/BetterDiscordAddons/master/Plugins/RoleMembers/RoleMembers.plugin.js
- * @updateUrl https://raw.githubusercontent.com/rauenzi/BetterDiscordAddons/master/Plugins/RoleMembers/RoleMembers.plugin.js
  */
 /*@cc_on
 @if (@_jscript)
@@ -31,99 +30,109 @@
     WScript.Quit();
 
 @else@*/
-
-module.exports = (() => {
-    const config = {info:{name:"RoleMembers",authors:[{name:"Zerebos",discord_id:"249746236008169473",github_username:"rauenzi",twitter_username:"ZackRauen"}],version:"0.1.14",description:"Allows you to see the members of each role on a server.",github:"https://github.com/rauenzi/BetterDiscordAddons/tree/master/Plugins/RoleMembers",github_raw:"https://raw.githubusercontent.com/rauenzi/BetterDiscordAddons/master/Plugins/RoleMembers/RoleMembers.plugin.js"},changelog:[{title:"Small Change",items:["Holding control when clicking on a context menu item will now copy the role ID instead of open the popup."]},{title:"Fully Fixed",type:"fixed",items:["Context menu item shows and works again.","Role mentions can be clicked once again.","Now only one popout will show at a time instead of infinite."]}],main:"index.js"};
-
-    return !global.ZeresPluginLibrary ? class {
-        constructor() {this._config = config;}
-        getName() {return config.info.name;}
-        getAuthor() {return config.info.authors.map(a => a.name).join(", ");}
-        getDescription() {return config.info.description;}
-        getVersion() {return config.info.version;}
-        load() {
-            BdApi.showConfirmationModal("Library Missing", `The library plugin needed for ${config.info.name} is missing. Please click Download Now to install it.`, {
-                confirmText: "Download Now",
-                cancelText: "Cancel",
-                onConfirm: () => {
-                    require("request").get("https://rauenzi.github.io/BDPluginLibrary/release/0PluginLibrary.plugin.js", async (error, response, body) => {
-                        if (error) return require("electron").shell.openExternal("https://betterdiscord.net/ghdl?url=https://raw.githubusercontent.com/rauenzi/BDPluginLibrary/master/release/0PluginLibrary.plugin.js");
-                        await new Promise(r => require("fs").writeFile(require("path").join(BdApi.Plugins.folder, "0PluginLibrary.plugin.js"), body, r));
+const config = {
+    info: {
+        name: "RoleMembers",
+        authors: [
+            {
+                name: "Zerebos",
+                discord_id: "249746236008169473",
+                github_username: "rauenzi",
+                twitter_username: "ZackRauen"
+            }
+        ],
+        version: "0.1.21",
+        description: "Allows you to see the members of each role on a server.",
+        github: "https://github.com/rauenzi/BetterDiscordAddons/tree/master/Plugins/RoleMembers",
+        github_raw: "https://raw.githubusercontent.com/rauenzi/BetterDiscordAddons/master/Plugins/RoleMembers/RoleMembers.plugin.js"
+    },
+    changelog: [
+        {
+            title: "Partially Fixed!",
+            type: "fixed",
+            items: [
+                "Updated for Discord's changes!",
+                "User popouts will not show on click, that will come in a later update from the library."
+            ]
+        }
+    ],
+    main: "index.js"
+};
+class Dummy {
+    constructor() {this._config = config;}
+    start() {}
+    stop() {}
+}
+ 
+if (!global.ZeresPluginLibrary) {
+    BdApi.showConfirmationModal("Library Missing", `The library plugin needed for ${config.name ?? config.info.name} is missing. Please click Download Now to install it.`, {
+        confirmText: "Download Now",
+        cancelText: "Cancel",
+        onConfirm: () => {
+            require("request").get("https://betterdiscord.app/gh-redirect?id=9", async (err, resp, body) => {
+                if (err) return require("electron").shell.openExternal("https://betterdiscord.app/Download?id=9");
+                if (resp.statusCode === 302) {
+                    require("request").get(resp.headers.location, async (error, response, content) => {
+                        if (error) return require("electron").shell.openExternal("https://betterdiscord.app/Download?id=9");
+                        await new Promise(r => require("fs").writeFile(require("path").join(BdApi.Plugins.folder, "0PluginLibrary.plugin.js"), content, r));
                     });
+                }
+                else {
+                    await new Promise(r => require("fs").writeFile(require("path").join(BdApi.Plugins.folder, "0PluginLibrary.plugin.js"), body, r));
                 }
             });
         }
-        start() {}
-        stop() {}
-    } : (([Plugin, Api]) => {
-        const plugin = (Plugin, Api) => {
-    const {Popouts, DiscordModules, DiscordSelectors, DiscordClasses, Utilities, WebpackModules, Patcher, DCM, DOMTools, Toasts} = Api;
+    });
+}
+ 
+module.exports = !global.ZeresPluginLibrary ? Dummy : (([Plugin, Api]) => {
+     const plugin = (Plugin, Api) => {
+    const {DOM, ContextMenu, Patcher, Webpack, UI, Utils} = window.BdApi;
+    const {DiscordModules, DiscordSelectors, Utilities, Popouts} = Api;
 
     const from = arr => arr && arr.length > 0 && Object.assign(...arr.map(([k, v]) => ({[k]: v})));
     const filter = (obj, predicate) => from(Object.entries(obj).filter((o) => {return predicate(o[1]);}));
 
+    const SelectedGuildStore = DiscordModules.SelectedGuildStore;
     const GuildStore = DiscordModules.GuildStore;
-    const PopoutStack = DiscordModules.PopoutStack;
     const GuildMemberStore = DiscordModules.GuildMemberStore;
     const UserStore = DiscordModules.UserStore;
     const ImageResolver = DiscordModules.ImageResolver;
-    // const WrapperClasses = WebpackModules.getByProps("wrapperHover");
-    const animate = DOMTools.animate ? DOMTools.animate.bind(DOMTools) : ({timing = _ => _, update, duration}) => {
-        // https://javascript.info/js-animation
-        const start = performance.now();
 
-        requestAnimationFrame(function renderFrame(time) {
-            // timeFraction goes from 0 to 1
-            let timeFraction = (time - start) / duration;
-            if (timeFraction > 1) timeFraction = 1;
-
-            // calculate the current animation state
-            const progress = timing(timeFraction);
-
-            update(progress); // draw it
-
-            if (timeFraction < 1) {
-            requestAnimationFrame(renderFrame);
-            }
-
-        });
-    };
-
-    const popoutHTML = `<div class="layer-v9HyYc" style="z-index: 100">
-<div class="animatorBottom-fS5rNO translate-2dAEQ6 didRender-33z1u8 popout-role-members" style="margin-top: 0;">
-    <div class="popoutList-T9CKZQ guildSettingsAuditLogsUserFilterPopout-3Jg5NE elevationBorderHigh-2WYJ09 role-members-popout">
-        <div class="popoutListInput-1l9TUI size14-3iUx6q container-cMG81i small-2oHLgT">
-            <div class="inner-2P4tQO"><input class="input-3Xdcic" placeholder="Search Members — {{memberCount}}" value="">
-                <div tabindex="0" class="iconLayout-3OgqU3 small-2oHLgT" role="button">
-                    <div class="iconContainer-2wXvy1">
-                        <svg name="Search" class="icon-1S6UIr visible-3bFCH-" width="18" height="18" viewBox="0 0 18 18"><g fill="none" fill-rule="evenodd"><path fill="currentColor" d="M3.60091481,7.20297313 C3.60091481,5.20983419 5.20983419,3.60091481 7.20297313,3.60091481 C9.19611206,3.60091481 10.8050314,5.20983419 10.8050314,7.20297313 C10.8050314,9.19611206 9.19611206,10.8050314 7.20297313,10.8050314 C5.20983419,10.8050314 3.60091481,9.19611206 3.60091481,7.20297313 Z M12.0057176,10.8050314 L11.3733562,10.8050314 L11.1492281,10.5889079 C11.9336764,9.67638651 12.4059463,8.49170955 12.4059463,7.20297313 C12.4059463,4.32933105 10.0766152,2 7.20297313,2 C4.32933105,2 2,4.32933105 2,7.20297313 C2,10.0766152 4.32933105,12.4059463 7.20297313,12.4059463 C8.49170955,12.4059463 9.67638651,11.9336764 10.5889079,11.1492281 L10.8050314,11.3733562 L10.8050314,12.0057176 L14.8073185,16 L16,14.8073185 L12.2102538,11.0099776 L12.0057176,10.8050314 Z"></path></g></svg>
-                        <svg name="Close" class="clear--Eywng icon-1S6UIr" width="12" height="12" viewBox="0 0 12 12"><g fill="none" fill-rule="evenodd"><path d="M0 0h12v12H0"></path><path class="fill" fill="currentColor" d="M9.5 3.205L8.795 2.5 6 5.295 3.205 2.5l-.705.705L5.295 6 2.5 8.795l.705.705L6 6.705 8.795 9.5l.705-.705L6.705 6"></path></g></svg>
+    const popoutHTML = `<div class="theme-dark layer_ec16dd" style="z-index: 100">
+<div class="animatorBottom_b2d32e translate_c2f6c4 didRender_f1da13 popout-role-members" style="margin-top: 0;">
+    <div class="container_d27846 selectFilterPopout_f4af87 elevationBorderHigh_f9a758 role-members-popout">
+        <div class="container__7712a medium__0fb5d">
+            <div class="inner__999f6"><input class="input__74754" placeholder="Search Members — {{memberCount}}" value="">
+                <div tabindex="0" class="iconLayout__6d744 medium__0fb5d" role="button">
+                    <div class="iconContainer__3af05">
+                        <svg name="Search" class="icon__37cc1 visible__50aa8" width="18" height="18" viewBox="0 0 18 18"><g fill="none" fill-rule="evenodd"><path fill="currentColor" d="M3.60091481,7.20297313 C3.60091481,5.20983419 5.20983419,3.60091481 7.20297313,3.60091481 C9.19611206,3.60091481 10.8050314,5.20983419 10.8050314,7.20297313 C10.8050314,9.19611206 9.19611206,10.8050314 7.20297313,10.8050314 C5.20983419,10.8050314 3.60091481,9.19611206 3.60091481,7.20297313 Z M12.0057176,10.8050314 L11.3733562,10.8050314 L11.1492281,10.5889079 C11.9336764,9.67638651 12.4059463,8.49170955 12.4059463,7.20297313 C12.4059463,4.32933105 10.0766152,2 7.20297313,2 C4.32933105,2 2,4.32933105 2,7.20297313 C2,10.0766152 4.32933105,12.4059463 7.20297313,12.4059463 C8.49170955,12.4059463 9.67638651,11.9336764 10.5889079,11.1492281 L10.8050314,11.3733562 L10.8050314,12.0057176 L14.8073185,16 L16,14.8073185 L12.2102538,11.0099776 L12.0057176,10.8050314 Z"></path></g></svg>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="divider-3573oO divider-faSUbd marginTop8-1DLZ1n marginBottom8-AtZOdT"></div>
-        <div class="scroller-2CvAgC thin-1ybCId scrollerBase-289Jih role-members" dir="ltr" style="overflow: hidden scroll; padding-right: 0px; max-height: 400px;">
-            
+        <div>
+            <div class="list__9970c list_bc6ec7 none__51a8f scrollerBase_dc3aa9 role-members" dir="ltr" style="overflow: hidden scroll; padding-right: 0px; max-height: 400px;">
+                
+            </div>
         </div>
     </div>
 </div>
 </div>`;
-    const itemHTML = `<div class="flex-1xMQg5 flex-1O1GKY horizontal-1ae9ci horizontal-2EEEnY flex-1O1GKY directionRow-3v3tfG justifyStart-2NDFzi alignCenter-1dQNNs noWrap-3jynv6 selectableItem-1MP3MQ role-member" style="flex: 1 1 auto; height: auto;">
-    <div class="flex-1xMQg5 flex-1O1GKY horizontal-1ae9ci horizontal-2EEEnY flex-1O1GKY directionRow-3v3tfG justifyStart-2NDFzi alignCenter-1dQNNs noWrap-3jynv6 selectableItemLabel-1RKQjD" style="flex: 1 1 auto;">
-        <div class="avatar-gPqiLm da-avatar flexChild-faoVW3 da-flexChild wrapper-3t9DeA da-wrapper" role="img"
-            aria-label="gibzx, Online" aria-hidden="false" style="width: 32px; height: 32px;"><svg width="40"
-                height="32" viewBox="0 0 40 32" class="mask-1l8v16 da-mask" aria-hidden="true">
-                <foreignObject x="0" y="0" width="32" height="32" mask="url(#svg-mask-avatar-status-round-32)"><img
-                        src="{{avatar_url}}"
-                        alt=" " class="avatar-VxgULZ da-avatar" aria-hidden="true"></foreignObject>
-                <rect width="10" height="10" x="22" y="22" fill="#43b581" mask="url(#svg-mask-status-online)"
-                    class="pointerEvents-2zdfdO da-pointerEvents"></rect>
+    const itemHTML = `<div class="item__287de role-member">
+    <div class="itemCheckbox__8e8b3">
+        <div class="wrapper_edb6e0 avatar__31cab" role="img" aria-hidden="false" style="width: 32px; height: 32px;">
+            <svg width="40" height="32" viewBox="0 0 40 32" class="mask__1979f svg_f5b652" aria-hidden="true">
+                <foreignObject x="0" y="0" width="32" height="32" mask="url(#svg-mask-avatar-default)">
+                        <div class="avatarStack__6604a">
+                            <img src="{{avatar_url}}" alt=" " class="avatar__991e2" aria-hidden="true">
+                        </div>
+                </foreignObject>
             </svg>
         </div>
-        <div class="userText-1WdPps" style="flex: 1 1 auto;">
-            <span class="username">{{username}}</span><span class="discriminator-3tYCOD">{{discriminator}}</span>
-        </div>
+    </div>
+    <div class="itemLabel__6d2fe">
+        <span class="defaultColor__77578 username">{{username}}</span>
     </div>
 </div>`;
 
@@ -135,40 +144,38 @@ module.exports = (() => {
         }
 
         onStop() {
-            if (this.listener) this.listener({target: {classList: {contains: () => {}}, closest: () => {}}});
             const elements = document.querySelectorAll(".popout-role-members");
             for (const el of elements) el && el.remove();
-            Patcher.unpatchAll();
+            Patcher.unpatchAll(this.name);
+            this.contextMenuPatch?.();
         }
 
         patchRoleMention() {
-            const Pill = WebpackModules.getModule(m => m?.default.displayName === "RoleMention");
-            Patcher.after(Pill, "default", (_, [props], component) => {
-                if (!component || !component.props || !component.props.className) return;
-                if (!component.props.className.toLowerCase().includes("mention")) return;
-                component.props.className += ` mention interactive`;
-                component.props.onClick = (e) => {
-                    const roles = GuildStore.getGuild(props.guildId).roles;
-                    const name = component.props.children[0].slice(1);
+            const Pill = Webpack.getModule(Webpack.Filters.byStrings("interactive", "iconType"), {defaultExport: false});
+            Patcher.before(this.name, Pill, "Z", (_, [props]) => {
+                if (!props?.className.toLowerCase().includes("rolemention")) return;
+                props.className += ` interactive`;
+                props.onClick = (e) => {
+                    const roles = GuildStore.getGuild(SelectedGuildStore.getGuildId()).roles;
+                    const name = props.children[1][0].slice(1);
                     let role = filter(roles, r => r.name == name);
                     if (!role) return;
                     role = role[Object.keys(role)[0]];
-                    this.showRolePopout(e.nativeEvent.target, props.guildId, role.id);
+                    this.showRolePopout(e.nativeEvent.target, SelectedGuildStore.getGuildId(), role.id);
                 };
             });
         }
 
         patchGuildContextMenu() {
-            const GuildContextMenu = WebpackModules.getModule(m => m.default && m.default.displayName == "GuildContextMenu");
-            Patcher.after(GuildContextMenu, "default", (_, args, retVal) => {
-                const props = args[0];
-                const guildId = props.guild.id;
-                const roles = props.guild.roles;
+            this.contextMenuPatch = ContextMenu.patch("guild-context", (retVal, props) => {
+                const guild = props.guild;
+                const guildId = guild.id;
+                const roles = guild.roles;
                 const roleItems = [];
 
                 for (const roleId in roles) {
                     const role = roles[roleId];
-                    const item = DCM.buildMenuItem({
+                    const item = ContextMenu.buildItem({
                         id: roleId,
                         label: role.name,
                         style: {color: role.colorString ? role.colorString : ""},
@@ -177,23 +184,36 @@ module.exports = (() => {
                             if (e.ctrlKey) {
                                 try {
                                     DiscordNative.clipboard.copy(role.id);
-                                    Toasts.success("Copied Role ID to clipboard!");
+                                    UI.showToast("Copied Role ID to clipboard!", {type: "success"});
                                 }
                                 catch {
-                                    Toasts.success("Could not copy Role ID to clipboard");
+                                    UI.showToast("Could not copy Role ID to clipboard", {type: "success"});
                                 }
                             }
                             else {
-                                this.showRolePopout(e.target.closest(DiscordSelectors.ContextMenu.item), guildId, role.id);
+                                this.showRolePopout({
+                                    getBoundingClientRect() {
+                                        return {
+                                            top: e.pageY,
+                                            bottom: e.pageY,
+                                            left: e.pageX,
+                                            right: e.pageX
+                                        };
+                                    }
+                                }, guildId, role.id);
                             }
                         }
                     });
                     roleItems.push(item);
                 }
-                const original = retVal.props.children[0].props.children;
-                const newOne = DCM.buildMenuItem({type: "submenu", label: "Role Members", children: roleItems});
-                if (Array.isArray(original)) original.splice(1, 0, newOne);
-                else retVal.props.children[0].props.children = [original, newOne];
+
+                const newOne = ContextMenu.buildItem({type: "submenu", label: "Role Members", children: roleItems});
+
+                const separatorIndex = retVal.props.children.findIndex(k => !k?.props?.label);
+                const insertIndex = separatorIndex > 0 ? separatorIndex + 1 : 1;
+                retVal.props.children.splice(insertIndex, 0, newOne);
+                // return original;
+
             });
         }
 
@@ -203,7 +223,7 @@ module.exports = (() => {
             let members = GuildMemberStore.getMembers(guildId);
             if (guildId != roleId) members = members.filter(m => m.roles.includes(role.id));
 
-            const popout = DOMTools.createElement(Utilities.formatString(popoutHTML, {className: DiscordClasses.Popouts.popout.add(DiscordClasses.Popouts.noArrow), memberCount: members.length}));
+            const popout = DOM.parseHTML(Utilities.formatString(popoutHTML, {memberCount: members.length}));
             const searchInput = popout.querySelector("input");
             searchInput.addEventListener("keyup", () => {
                 const items = popout.querySelectorAll(".role-member");
@@ -219,11 +239,11 @@ module.exports = (() => {
             const scroller = popout.querySelector(".role-members");
             for (const member of members) {
                 const user = UserStore.getUser(member.userId);
-                const elem = DOMTools.createElement(Utilities.formatString(itemHTML, {username: user.username, discriminator: "#" + user.discriminator, avatar_url: ImageResolver.getUserAvatarURL(user)}));
+                const discriminator = user.discriminator != 0 ? "#" + user.discriminator : "";
+                const elem = DOM.parseHTML(Utilities.formatString(itemHTML, {username: Utils.escapeHTML(user.username), discriminator, avatar_url: ImageResolver.getUserAvatarURL(user)}));
                 elem.addEventListener("click", () => {
-                    PopoutStack.close("role-members");
-                    elem.classList.add("popout-open");
-                    if (elem.classList.contains("popout-open")) Popouts.showUserPopout(elem, user, {guild: guildId});
+                    // UI.showToast("User popouts are currently broken!", {type: "error"});
+                    setTimeout(() => Popouts.showUserPopout(elem, user, {guild: guildId}), 1);
                 });
                 scroller.append(elem);
             }
@@ -235,43 +255,37 @@ module.exports = (() => {
         showPopout(popout, relativeTarget) {
             if (this.listener) this.listener({target: {classList: {contains: () => {}}, closest: () => {}}}); // Close any previous popouts
             
-            document.querySelector(DiscordSelectors.Popouts.popouts).append(popout);
+            document.querySelector(`[class*="app_"] ~ ${DiscordSelectors.TooltipLayers.layerContainer}`).append(popout);
 
             const maxWidth = Math.max(document.documentElement.clientWidth, window.innerWidth || 0);
             const maxHeight = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
 
             const offset = relativeTarget.getBoundingClientRect();
             if (offset.right + popout.offsetHeight >= maxWidth) {
-                popout.classList.add(...DiscordClasses.Popouts.popoutLeft.value.split(" "));
+                // popout.classList.add(...DiscordClasses.Popouts.popoutLeft.value.split(" "));
                 popout.style.left = Math.round(offset.left - popout.offsetWidth - 20) + "px";
                 // popout.animate({left: Math.round(offset.left - popout.offsetWidth - 10)}, 100);
                 const original = Math.round(offset.left - popout.offsetWidth - 20);
                 const endPoint = Math.round(offset.left - popout.offsetWidth - 10);
-                animate({
-                    duration: 100,
-                    update: function(progress) {
+                DOM.animate(function(progress) {
                         let value = 0;
                         if (endPoint > original) value = original + (progress * (endPoint - original));
                         else value = original - (progress * (original - endPoint));
                         popout.style.left = value + "px";
-                    }
-                });
+                }, 100);
             }
             else {
-                popout.classList.add(...DiscordClasses.Popouts.popoutRight.value.split(" "));
+                // popout.classList.add(...DiscordClasses.Popouts.popoutRight.value.split(" "));
                 popout.style.left = (offset.right + 10) + "px";
                 // popout.animate({left: offset.right}, 100);
                 const original = offset.right + 10;
                 const endPoint = offset.right;
-                animate({
-                    duration: 100,
-                    update: function(progress) {
+                DOM.animate(function(progress) {
                         let value = 0;
                         if (endPoint > original) value = original + (progress * (endPoint - original));
                         else value = original - (progress * (original - endPoint));
                         popout.style.left = value + "px";
-                    }
-                });
+                }, 100);
             }
 
             if (offset.top + popout.offsetHeight >= maxHeight) popout.style.top = Math.round(maxHeight - popout.offsetHeight) + "px";
@@ -290,7 +304,6 @@ module.exports = (() => {
 
     };
 };
-        return plugin(Plugin, Api);
-    })(global.ZeresPluginLibrary.buildPlugin(config));
-})();
+     return plugin(Plugin, Api);
+})(global.ZeresPluginLibrary.buildPlugin(config));
 /*@end@*/

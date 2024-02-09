@@ -1,4 +1,11 @@
-//META{"name":"FreeEmojis"}*//
+/**
+ * @name FreeEmojis
+ * @version 1.7
+ * @description Link emojis if you don't have nitro! Type them out or use the emoji picker! [64px]
+ * @author An0
+ * @source https://github.com/An00nymushun/DiscordFreeEmojis
+ * @updateUrl https://raw.githubusercontent.com/An00nymushun/DiscordFreeEmojis/main/DiscordFreeEmojis64px.plugin.js
+ */
 
 /*@cc_on
 @if (@_jscript)
@@ -31,89 +38,90 @@ var Discord;
 var Utils = {
     Log: (message) => { console.log(`%c[FreeEmojis] %c${message}`, `color:${BaseColor};font-weight:bold`, "") },
     Warn: (message) => { console.warn(`%c[FreeEmojis] %c${message}`, `color:${BaseColor};font-weight:bold`, "") },
-    Error: (message) => { console.error(`%c[FreeEmojis] %c${message}`, `color:${BaseColor};font-weight:bold`, "") }
+    Error: (message) => { console.error(`%c[FreeEmojis] %c${message}`, `color:${BaseColor};font-weight:bold`, "") },
+    Webpack: () => {
+        let webpackExports;
+
+        if(typeof BdApi !== "undefined" && BdApi?.findModuleByProps && BdApi?.findModule) {
+            return { findModule: BdApi.findModule, findModuleByUniqueProperties: (props) => BdApi.findModuleByProps.apply(null, props) };
+        }
+        else if(Discord.window.webpackChunkdiscord_app != null) {
+            Discord.window.webpackChunkdiscord_app.push([
+                ['__extra_id__'],
+                {},
+                req => webpackExports = req
+            ]);
+        }
+        else if(Discord.window.webpackJsonp != null) {
+            webpackExports = typeof(Discord.window.webpackJsonp) === 'function' ?
+            Discord.window.webpackJsonp(
+                [],
+                { '__extra_id__': (module, _export_, req) => { _export_.default = req } },
+                [ '__extra_id__' ]
+            ).default :
+            Discord.window.webpackJsonp.push([
+                [],
+                { '__extra_id__': (_module_, exports, req) => { _module_.exports = req } },
+                [ [ '__extra_id__' ] ]
+            ]);
+        }
+        else return null;
+    
+        delete webpackExports.m['__extra_id__'];
+        delete webpackExports.c['__extra_id__'];
+    
+        const findModule = (filter) => {
+            for(let i in webpackExports.c) {
+                if(webpackExports.c.hasOwnProperty(i)) {
+                    let m = webpackExports.c[i].exports;
+    
+                    if(!m) continue;
+    
+                    if(m.__esModule && m.default) m = m.default;
+    
+                    if(filter(m)) return m;
+                }
+            }
+    
+            return null;
+        };
+
+        const findModuleByUniqueProperties = (propNames) => findModule(module => propNames.every(prop => module[prop] !== undefined));
+
+        return { findModule, findModuleByUniqueProperties };
+    }
 };
 
 var Initialized = false;
 var searchHook;
 var parseHook;
-var useEmojiSelectHandlerHook;
-function Init(nonInvasive)
+var getEmojiUnavailableReasonHook;
+function Init()
 {
     Discord = { window: (typeof(unsafeWindow) !== 'undefined') ? unsafeWindow : window };
 
-    if(Discord.window.webpackJsonp == null) { if(!nonInvasive) Utils.Error("Webpack not found."); return 0; }
+    const webpackUtil = Utils.Webpack();
+    if(webpackUtil == null) { Utils.Error("Webpack not found."); return 0; }
+    const { findModule, findModuleByUniqueProperties } = webpackUtil;
 
-    const webpackExports = typeof(Discord.window.webpackJsonp) === 'function' ?
-          Discord.window.webpackJsonp(
-              [],
-              { '__extra_id__': (module, _export_, req) => { _export_.default = req } },
-              [ '__extra_id__' ]
-          ).default :
-          Discord.window.webpackJsonp.push( [
-              [],
-              { '__extra_id__': (_module_, exports, req) => { _module_.exports = req } },
-              [ [ '__extra_id__' ] ] ]
-          );
+    let emojisModule = findModuleByUniqueProperties([ 'getDisambiguatedEmojiContext', 'searchWithoutFetchingLatest' ]);
+    if(emojisModule == null) { Utils.Error("emojisModule not found."); return 0; }
 
-    delete webpackExports.m['__extra_id__'];
-    delete webpackExports.c['__extra_id__'];
+    let messageEmojiParserModule = findModuleByUniqueProperties([ 'parse', 'parsePreprocessor', 'unparse' ]);
+    if(messageEmojiParserModule == null) { Utils.Error("messageEmojiParserModule not found."); return 0; }
 
-    const findModule = (filter, nonInvasive) => {
-        for(let i in webpackExports.c) {
-            if(webpackExports.c.hasOwnProperty(i)) {
-                let m = webpackExports.c[i].exports;
+    let emojiPermissionsModule = findModuleByUniqueProperties([ 'getEmojiUnavailableReason' ]);
+    if(emojiPermissionsModule == null) { Utils.Error("emojiPermissionsModule not found."); return 0; }
 
-                if(!m) continue;
-
-                if(m.__esModule && m.default) m = m.default;
-
-                if(filter(m)) return m;
-            }
-        }
-
-        if (!nonInvasive) {
-            console.warn("Couldn't find module in existing cache. Loading all modules.");
-
-            for (let i = 0; i < webpackExports.m.length; i++) {
-                try {
-                    let m = webpackExports(i);
-
-                    if(!m) continue;
-
-                    if(m.__esModule && m.default) m = m.default;
-
-                    if(filter(m)) return m;
-                }
-                catch (e) { }
-            }
-
-            console.warn("Cannot find module.");
-        }
-
-        return null;
-    };
-
-    const findModuleByUniqueProperties = (propNames, nonInvasive) => findModule(module => propNames.every(prop => module[prop] !== undefined), nonInvasive);
-
-    let emojisModule = findModuleByUniqueProperties([ 'getDisambiguatedEmojiContext', 'search' ], nonInvasive);
-    if(emojisModule == null) { if(!nonInvasive) Utils.Error("emojisModule not found."); return 0; }
-
-    let messageEmojiParserModule = findModuleByUniqueProperties([ 'parse', 'parsePreprocessor', 'unparse' ], nonInvasive);
-    if(messageEmojiParserModule == null) { if(!nonInvasive) Utils.Error("messageEmojiParserModule not found."); return 0; }
-
-    let emojiPickerModule = findModuleByUniqueProperties([ 'useEmojiSelectHandler' ], nonInvasive);
-    if(emojiPickerModule == null) { if(!nonInvasive) Utils.Error("emojiPickerModule not found."); return 0; }
-
-    Discord.EmojisModule = emojisModule;
-    searchHook = Discord.original_search = emojisModule.search;
-    emojisModule.search = function() { return searchHook.apply(this, arguments); };
+    searchHook = Discord.original_searchWithoutFetchingLatest = emojisModule.searchWithoutFetchingLatest;
+    emojisModule.searchWithoutFetchingLatest = function() { return searchHook.apply(this, arguments); };
 
     parseHook = Discord.original_parse = messageEmojiParserModule.parse;
     messageEmojiParserModule.parse = function() { return parseHook.apply(this, arguments); };
 
-    useEmojiSelectHandlerHook = Discord.original_useEmojiSelectHandler = emojiPickerModule.useEmojiSelectHandler;
-    emojiPickerModule.useEmojiSelectHandler = function() { return useEmojiSelectHandlerHook.apply(this, arguments); };
+    getEmojiUnavailableReasonHook = Discord.original_getEmojiUnavailableReason = emojiPermissionsModule.getEmojiUnavailableReason;
+    emojiPermissionsModule.getEmojiUnavailableReason = function() { return getEmojiUnavailableReasonHook.apply(this, arguments); };
+    
 
     Utils.Log("initialized");
     Initialized = true;
@@ -124,55 +132,60 @@ function Init(nonInvasive)
 function Start() {
     if(!Initialized && Init() !== 1) return;
 
-    const { EmojisModule, original_parse, original_useEmojiSelectHandler } = Discord;
+    const { original_parse, original_getEmojiUnavailableReason } = Discord;
 
     searchHook = function() {
-        let result = Discord.original_search.apply(this, arguments);
+        let result = Discord.original_searchWithoutFetchingLatest.apply(this, arguments);
+        console.log({result, arguments})
         result.unlocked.push(...result.locked);
         result.locked = [];
         return result;
     }
 
+    function replaceEmoji(parseResult, emoji) {
+        parseResult.content = parseResult.content.replace(`<${emoji.animated ? "a" : ""}:${emoji.originalName || emoji.name}:${emoji.id}>`, emoji.url.split("?")[0] + "?size=64");
+    }
+
     parseHook = function() {
         let result = original_parse.apply(this, arguments);
+
         if(result.invalidEmojis.length !== 0) {
             for(let emoji of result.invalidEmojis) {
-                result.content = result.content.replace(`<${emoji.animated ? "a" : ""}:${emoji.originalName || emoji.name}:${emoji.id}>`, emoji.url.split("?")[0] + "?size=64");
+                replaceEmoji(result, emoji);
             }
             result.invalidEmojis = [];
         }
+        let validNonShortcutEmojis = result.validNonShortcutEmojis;
+        for (let i = 0; i < validNonShortcutEmojis.length; i++) {
+            const emoji = validNonShortcutEmojis[i];
+            if(!emoji.available) {
+                replaceEmoji(result, emoji);
+                validNonShortcutEmojis.splice(i, 1);
+                i--;
+            }
+        }
+
         return result;
     };
 
-    useEmojiSelectHandlerHook = function(args) {
-        const { onSelectEmoji, closePopout } = args;
-        const originalHandler = original_useEmojiSelectHandler.apply(this, arguments);
-        return function(data, state) {
-            if(state.toggleFavorite)
-                return originalHandler.apply(this, arguments);
-
-            const emoji = data.emoji;
-            if(emoji != null && emoji.available) {
-                onSelectEmoji(emoji, state.isFinalSelection);
-                if(state.isFinalSelection) closePopout();
-            }
-        };
-    };
+    getEmojiUnavailableReasonHook = function() {
+        return null;
+    }
 }
 
 function Stop() {
     if(!Initialized) return;
 
-    searchHook = Discord.original_search;
+    searchHook = Discord.original_searchWithoutFetchingLatest;
     parseHook = Discord.original_parse;
-    useEmojiSelectHandlerHook = Discord.original_useEmojiSelectHandler;
+    getEmojiUnavailableReasonHook = Discord.original_getEmojiUnavailableReason;
 }
 
 return function() { return {
     getName: () => "DiscordFreeEmojis",
     getShortName: () => "FreeEmojis",
     getDescription: () => "Link emojis if you don't have nitro! Type them out or use the emoji picker! [64px]",
-    getVersion: () => "1.3",
+    getVersion: () => "1.7",
     getAuthor: () => "An0",
 
     start: Start,

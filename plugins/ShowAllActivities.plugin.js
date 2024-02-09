@@ -1,178 +1,591 @@
 /**
-* @name ShowAllActivities
-* @displayName ShowAllActivities
-* @authorId 415849376598982656
-* @invite gvA2ree
-*/
-/*@cc_on
-@if (@_jscript)
-    
-    // Offer to self-install for clueless users that try to run this directly.
-    var shell = WScript.CreateObject("WScript.Shell");
-    var fs = new ActiveXObject("Scripting.FileSystemObject");
-    var pathPlugins = shell.ExpandEnvironmentStrings("%APPDATA%\BetterDiscord\plugins");
-    var pathSelf = WScript.ScriptFullName;
-    // Put the user at ease by addressing them in the first person
-    shell.Popup("It looks like you've mistakenly tried to run me directly. \n(Don't do that!)", 0, "I'm a plugin for BetterDiscord", 0x30);
-    if (fs.GetParentFolderName(pathSelf) === fs.GetAbsolutePathName(pathPlugins)) {
-        shell.Popup("I'm in the correct folder already.", 0, "I'm already installed", 0x40);
-    } else if (!fs.FolderExists(pathPlugins)) {
-        shell.Popup("I can't find the BetterDiscord plugins folder.\nAre you sure it's even installed?", 0, "Can't install myself", 0x10);
-    } else if (shell.Popup("Should I copy myself to BetterDiscord's plugins folder for you?", 0, "Do you need some help?", 0x34) === 6) {
-        fs.CopyFile(pathSelf, fs.BuildPath(pathPlugins, fs.GetFileName(pathSelf)), true);
-        // Show the user where to put plugins in the future
-        shell.Exec("explorer " + pathPlugins);
-        shell.Popup("I'm installed!", 0, "Successfully installed", 0x40);
-    }
-    WScript.Quit();
+ * @name ShowAllActivities
+ * @version 1.1.2
+ * @description See every status a user has enabled. Original made by Juby210#0577.
+ * @github https://github.com/Strencher/BetterDiscordStuff/tree/master/ShowAllActivities
+ * @github_raw https://raw.githubusercontent.com/Strencher/BetterDiscordStuff/master/ShowAllActivities/ShowAllActivities.plugin.js
+ * @invite gvA2ree
+ * @changelogImage https://cdn.discordapp.com/attachments/672786846018961418/1053059354552696932/20th-century-fox-intro.png
+ * @changelogDate 2022-12-15T23:00:00.000Z
+ * @author Strencher, Juby210
+ */
 
-@else@*/
+'use strict';
 
-module.exports = (() => {
-    const config = {
-        info: {
-            name: "ShowAllActivities",
-            authors: [
-                {
-                    name: "Strencher",
-                    discord_id: "415849376598982656",
-                    github_username: "Strencher",
-                    twitter_username: "Strencher3"
-                }
-            ],
-            version: "0.0.3",
-            description: "See every status a user has enabled. Original made by Juby210#0577.",
-            github: "https://github.com/Strencher/BetterDiscordStuff/blob/master/ShowAllActivities/ShowAllActivities.plugin.js",
-            github_raw: "https://raw.githubusercontent.com/Strencher/BetterDiscordStuff/master/ShowAllActivities/ShowAllActivities.plugin.js"
+/* @module @manifest */
+const config = {
+    "name": "ShowAllActivities",
+    "version": "1.1.2",
+    "authors": [{
+            "name": "Strencher",
+            "discord_id": "415849376598982656",
+            "github_username": "Strencher",
+            "twitter_username": "Strencher3"
         },
-        changelog: [
-            {
-                title: "Fixed",
-                type: "fixed",
-                items: ["Fixed crashes"]
-            }
-        ]
-    };
-
-    return !global.ZeresPluginLibrary ? class {
-        constructor() { this._config = config; }
-        getName() { return config.info.name; }
-        getAuthor() { return config.info.authors.map(a => a.name).join(", "); }
-        getDescription() { return config.info.description; }
-        getVersion() { return config.info.version; }
-        load() {
-            BdApi.showConfirmationModal("Library plugin is needed", 
-                [`The library plugin needed for ${config.info.name} is missing. Please click Download Now to install it.`], {
-                    confirmText: "Download",
-                    cancelText: "Cancel",
-                    onConfirm: () => {
-                        require("request").get("https://rauenzi.github.io/BDPluginLibrary/release/0PluginLibrary.plugin.js", async (error, response, body) => {
-                        if (error) return require("electron").shell.openExternal("https://betterdiscord.net/ghdl?url=https://raw.githubusercontent.com/rauenzi/BDPluginLibrary/master/release/0PluginLibrary.plugin.js");
-                        await new Promise(r => require("fs").writeFile(require("path").join(BdApi.Plugins.folder, "0PluginLibrary.plugin.js"), body, r));
-                        });
-                    }
-                });
+        {
+            "name": "Juby210",
+            "discord_id": "324622488644616195",
+            "github_username": "Juby210"
         }
-        start() { }
-        stop() { }
-    } : (([Plugin, Api]) => {
-        const plugin = (Plugin, Api) => {
 
-            const {WebpackModules, PluginUtilities, ReactComponents, Patcher, DiscordModules: {React, ButtonData}, Utilities} = Api;
-            const classes = WebpackModules.getByProps('iconButtonSize');
-            const ActivityStore = WebpackModules.getByProps('getActivities');
-            const GameStore = WebpackModules.getByProps('getGame', 'getGameByName');
-            const {TooltipContainer: Tooltip} = WebpackModules.getByProps('TooltipContainer');
-            const Arrow = WebpackModules.getModule(m => m.displayName === 'Arrow' && !m.prototype?.render)
-            const LabelStore = WebpackModules.getByProps('Messages', 'setLocale')
-            const Button = WebpackModules.getByProps('DropdownSizes');
-            var temp;
-            const activitiesFilter = (item, index) => {
-                if (index == 0) temp = []
-                if (temp.includes(item.application_id || item.name)) return false
-                temp.push(item.application_id || item.name)
-                return item.type != 4
-            }
-            return class ShowAllActivities extends Plugin {
-                constructor() {
-                    super();
-                }
+    ],
+    "description": "See every status a user has enabled. Original made by Juby210#0577.",
+    "github": "https://github.com/Strencher/BetterDiscordStuff/tree/master/ShowAllActivities",
+    "github_raw": "https://raw.githubusercontent.com/Strencher/BetterDiscordStuff/master/ShowAllActivities/ShowAllActivities.plugin.js",
+    "invite": "gvA2ree",
+    "changelogImage": "https://cdn.discordapp.com/attachments/672786846018961418/1053059354552696932/20th-century-fox-intro.png",
+    "changelogDate": "2022-12-15T23:00:00.000Z",
+    "changelog": [{
+        "title": "Fixes",
+        "type": "fixed",
+        "items": [
+            "After a very, very long time, this plugin has returned. If you notice any bugs, please file an issue on my github or create a forum post in my server about it!"
+        ]
+    }]
+};
 
-                get css() {
-                    return `
-                        .allactivities-left {
-                            margin-right: 8px;
-                        }
-                        .allactivities-right {
-                            margin-left: 8px;
-                        }
-                        .allactivities-margin {
-                            margin-top: 12px;
-                        }
-                    `;
-                }
+/*@end */
 
-                onStart() { 
-                    PluginUtilities.addStyle(config.info.name, this.css);
-                    this.patchUserActivity();
-                }
+/* @module @api */
+const {
+    Net,
+    Data,
+    Patcher,
+    ReactUtils,
+    Utils,
+    Webpack: Webpack$2,
+    UI,
+    ContextMenu,
+    DOM
+} = new BdApi(config.name);
+/*@end */
 
-                patchUserActivity() {
-                    const UserActivity = WebpackModules.getByDisplayName('UserActivity');
-                    Patcher.before(UserActivity.prototype, 'render', _this => {
-                        const activities = ActivityStore.getActivities(_this.props.user.id).filter(activitiesFilter);
-                        if(!activities) return;
-                        if(!_this.state) _this.state = {activity: activities.indexOf(_this.props.activity)};
-                        else {
-                            const activity = activities[_this.state.activity];
-                            if(!activity) return;
-                            _this.props.activity = activity;
-                            _this.props.game = GameStore.getGame(activity.application_id);
-                        }
-                    });
-                    Patcher.after(UserActivity.prototype, 'render', (_this, _, ret) => {
-                        if(!ret) return;
-                        const activities = ActivityStore.getActivities(_this.props.user.id).filter(activitiesFilter);
-                        if(!activities) return ret;
-                        const children = Utilities.getNestedProp(ret, 'props.children.1.props.children');
-                        if(!Array.isArray(children)) return ret;
-                        const marginClass = _this.props.activity.details || _this.props.activity.state ? ' allactivities-margin' : '';
-                        
-                        if(_this.state.activity != 0) children.unshift(React.createElement(Tooltip, {
-                            className: `allactivities-left${marginClass}`,
-                            text: LabelStore.Messages.PAGINATION_PREVIOUS,
-                        }, React.createElement(Button, {
-                            className: classes.iconButtonSize,
-                            size: Button.Sizes.MIN,
-                            color: Button.Colors.WHITE,
-                            look: Button.Looks.OUTLINED,
-                            onClick: () => _this.setState({activity: _this.state.activity - 1})
-                        }, React.createElement(Arrow, { direction: 'LEFT' }))));
+var Api = /*#__PURE__*/ Object.freeze({
+    __proto__: null,
+    ContextMenu: ContextMenu,
+    DOM: DOM,
+    Data: Data,
+    Net: Net,
+    Patcher: Patcher,
+    ReactUtils: ReactUtils,
+    UI: UI,
+    Utils: Utils,
+    Webpack: Webpack$2
+});
 
-                        if(_this.state.activity < activities.length - 1) children.push(React.createElement(Tooltip, {
-                            className: `allactivities-right${marginClass}`,
-                            text: LabelStore.Messages.NEXT,
-                        }, React.createElement(Button, {
-                            className: classes.iconButtonSize,
-                            size: Button.Sizes.MIN,
-                            color: Button.Colors.WHITE,
-                            look: Button.Looks.OUTLINED,
-                            onClick: () => _this.setState({activity: _this.state.activity + 1})
-                        }, React.createElement(Arrow, { direction: 'RIGHT' }))));
+/* @module webpack.js */
+const {
+    Webpack,
+    Webpack: {
+        Filters
+    }
+} = Api;
+const getByProps = (...props) => {
+    return Webpack.getModule(Filters.byProps(...props));
+};
+const getBulk = (...queries) => {
+    return Webpack.getBulk.apply(null, queries.map((q) => typeof q === "function" ? {
+        filter: q
+    } : q));
+};
+const getByPrototypeFields = (...fields) => {
+    return Webpack.getModule(Filters.byPrototypeFields(...fields));
+};
+const getStore = (name) => {
+    return Webpack.getModule((m) => m?._dispatchToken && m.getName?.() === name);
+};
+const getMangled = function*(filter, target = null) {
+    yield target = getModule((m) => Object.values(m).some(filter), {
+        searchExports: false
+    });
+    yield target && Object.keys(target).find((k) => filter(target[k]));
+};
+const getModule = Webpack.getModule;
+var Webpack$1 = {
+    ...Webpack,
+    getByPrototypeFields,
+    getMangled,
+    getByProps,
+    getStore,
+    getBulk
+};
 
-                        const actions = Utilities.findInReactTree(ret.props, e => e && e.onOpenConnections);
-                        if(actions) actions.activity = _this.props.activity;
-                    });
-                }
+/*@end */
 
-                onStop() {
-                    Patcher.unpatchAll();
-                    PluginUtilities.removeStyle(config.info.name);
-                }
+/* @module @styles */
 
-            }
+var Styles = {
+    sheets: [],
+    _element: null,
+    load() {
+        DOM.addStyle(this.sheets.join("\n"));
+    },
+    unload() {
+        DOM.removeStyle();
+    }
+};
+/*@end */
 
-        };
-        return plugin(Plugin, Api);
-    })(global.ZeresPluginLibrary.buildPlugin(config));
+/* @module react */
+var React = BdApi.React;
+/*@end */
+
+/* @module settings.js */
+const Settings = {
+    _listeners: new Set(),
+    _settings: Data.load("settings") ?? {},
+    addReactChangeListener(listener) {
+        Settings._listeners.add(listener);
+    },
+    removeReactChangeListener(listener) {
+        Settings._listeners.delete(listener);
+    },
+    get(key, def) {
+        return Settings._settings[key] ?? def;
+    },
+    set(key, value) {
+        Settings._settings[key] = value;
+        Data.save("settings", Settings._settings);
+    }
+};
+
+/*@end */
+
+/* @module settings.jsx */
+const SwitchItemComponent = Webpack$1.getModule((m) => typeof m === "function" && m.toString().includes("tooltipNote"), {
+    searchExports: true
+});
+const SwitchItem = (props) => {
+    const [value, setValue] = React.useState(props.value);
+    return React.createElement(
+        SwitchItemComponent, {
+            ...props,
+            value,
+            onChange: (val) => (setValue(val), props.onChange(val))
+        }
+    );
+};
+const Items = [{
+    id: "showAlways",
+    name: "Show Always",
+    note: "Shows the controls bar even if only one activity is present.",
+    value: false
+}];
+
+function SettingsPanel() {
+    return React.createElement(React.Fragment, null, Items.map((item) => React.createElement(
+        SwitchItem, {
+            ...item,
+            value: Settings.get(item.id, item.value),
+            onChange: (value) => Settings.set(item.id, value)
+        },
+        item.name
+    )));
+}
+
+/*@end */
+
+/* @module wrapper.scss */
+Styles.sheets.push("/* wrapper.scss */", `.wrapper {
+  display: flex;
+  flex-direction: column;
+}
+.wrapper .controls {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px;
+  background: var(--background-secondary-alt);
+  border-radius: 3px;
+  flex: 1 0;
+  margin-top: 10px;
+}
+.wrapper .controls .caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 3px;
+  background-color: rgba(255, 255, 255, 0.3);
+}
+.wrapper .controls .caret.disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+.wrapper .controls .caret:hover:not(.disabled) {
+  background: var(--background-modifier-accent);
+}
+.wrapper .controls .carosell {
+  display: flex;
+  align-items: center;
+}
+.wrapper .controls .carosell .dot {
+  margin: 0 4px;
+  width: 10px;
+  cursor: pointer;
+  height: 10px;
+  border-radius: 100px;
+  background: var(--interactive-muted);
+  transition: background 0.3s;
+  opacity: 0.6;
+}
+.wrapper .controls .carosell .dot:hover:not(.selected) {
+  opacity: 1;
+}
+.wrapper .controls .carosell .dot.selected {
+  opacity: 1;
+  background: var(--dot-color, var(--brand-experiment));
+}
+
+.tooltip {
+  --background-floating: var(--background-secondary);
+}`);
+var styles$1 = {
+    "wrapper": "wrapper",
+    "controls": "controls",
+    "caret": "caret",
+    "disabled": "disabled",
+    "carosell": "carosell",
+    "dot": "dot",
+    "selected": "selected",
+    "tooltip": "tooltip"
+};
+/*@end */
+
+/* @module caret.scss */
+Styles.sheets.push("/* caret.scss */", `.SAA-caret {
+  color: #ddd;
+}
+.SAA-caret.right {
+  transform: rotate(-90deg);
+}
+.SAA-caret.left {
+  transform: rotate(90deg);
+}`);
+var styles = {
+    "SAACaret": "SAA-caret",
+    "right": "right",
+    "left": "left"
+};
+/*@end */
+
+/* @module caret.jsx */
+function Caret({
+    direction,
+    ...props
+}) {
+    return React.createElement("svg", {
+        className: "SAA-caret " + styles[direction.toLowerCase()],
+        width: "24",
+        height: "24",
+        viewBox: "0 0 24 24",
+        ...props
+    }, React.createElement("path", {
+        fill: "currentColor",
+        fillRule: "evenodd",
+        clipRule: "evenodd",
+        d: "M16.59 8.59004L12 13.17L7.41 8.59004L6 10L12 16L18 10L16.59 8.59004Z"
+    }));
+}
+
+/*@end */
+
+/* @module colors.json */
+var spotify = "#1db954";
+var STREAMING = "#593695";
+var ActivityColors = {
+    spotify: spotify,
+    "363445589247131668": "#ff0000",
+    "463097721130188830": "#d9252a",
+    "802958789555781663": "#593695",
+    STREAMING: STREAMING,
+    "562286213059444737": "#3a004b",
+    "83226320970055681": "#889afb",
+    "782685898163617802": "#889afb",
+    "356869127241072640": "#112120",
+    "367827983903490050": "#e5649d"
+};
+
+/*@end */
+
+/* @module wrapper.jsx */
+const ActivityTypes = {
+    0: "PLAYING",
+    1: "STREAMING",
+    2: "LISTENING",
+    3: "WATCHING",
+    4: "CUSTOM_STATUS",
+    5: "COMPETING",
+    COMPETING: 5,
+    CUSTOM_STATUS: 4,
+    LISTENING: 2,
+    PLAYING: 0,
+    STREAMING: 1,
+    WATCHING: 3
+};
+const {
+    useCallback,
+    useMemo,
+    useState
+} = React;
+const useStateFromStores = Webpack$1.getModule((m) => m.useStateFromStores).useStateFromStores;
+const useStateFromStoresArray = Webpack$1.getModule((m) => m.useStateFromStores).useStateFromStoresArray;
+const {
+    Messages
+} = Webpack$1.getModule((m) => m?.Messages?.MEMBER_LIST_SHOWN);
+const PresenceStore = Webpack$1.getStore("PresenceStore");
+const Tooltip = BdApi.Components.Tooltip;
+const [UserActivity, UserActivityTypes] = (() => {
+    const module = Webpack$1.getModule((m) => Object.values(m).some((e) => e?.USER_POPOUT_V2));
+    return [
+        module.Z,
+        module[Object.keys(module).find((e) => module[e]?.USER_POPOUT_V2)]
+    ];
 })();
+const classes = Webpack$1.getByProps("activity", "buttonColor") ?? {};
+
+function ActivityWrapper({
+    user,
+    activityType: ActivityType = UserActivity,
+    whatever: WhateverWrapper,
+    ...props
+}) {
+    const activities = useStateFromStoresArray([PresenceStore], () => {
+        return PresenceStore.getActivities(user.id).filter((ac) => ac.type !== 4);
+    });
+    const [activityIndex, setActivityIndex] = useState(0);
+    const currentActivity = useMemo(() => activities[activityIndex], [activityIndex, activities]);
+    const shouldShowControls = useStateFromStores([Settings], () => {
+        return activities.length > 1 || Settings.get("showAlways", false);
+    }, [activities]);
+    const canGo = (type) => {
+        if (activityIndex === -1 || activities.length === 0 || activityIndex > activities.length - 1)
+            return false;
+        switch (type) {
+            case "backward": {
+                return activityIndex > 0;
+            }
+            case "forward": {
+                return activityIndex !== activities.length - 1 && activityIndex < activities.length - 1;
+            }
+        }
+    };
+    const handleSelectNext = (type) => useCallback(() => {
+        if (!canGo(type))
+            return;
+        let index;
+        switch (type) {
+            case "backward":
+                index = activityIndex - 1;
+                break;
+            case "forward":
+                index = activityIndex + 1;
+                break;
+        }
+        if (index < 0 || index > activities.length)
+            return;
+        setActivityIndex(index);
+    }, [activities, activityIndex, user]);
+    const goForward = handleSelectNext("forward");
+    const goBackward = handleSelectNext("backward");
+    if (!activities.length)
+        return null;
+    if (!currentActivity) {
+        setActivityIndex(0);
+        return null;
+    }
+    const style = {
+        "--dot-color": ActivityColors[Object.keys(ActivityColors).find((e) => currentActivity.id?.includes(e) || currentActivity.application_id === e || currentActivity.type === ActivityTypes[e])]
+    };
+    return React.createElement(WhateverWrapper, null, React.createElement("div", {
+        className: Utils.className(styles$1.wrapper, {
+            [styles$1.spotify]: currentActivity.id?.startsWith("spotify")
+        }),
+        style
+    }, React.createElement(
+        ActivityType, {
+            __SAA: true,
+            ...props,
+            user,
+            activity: currentActivity,
+            type: UserActivityTypes.USER_POPOUT_V2,
+            key: currentActivity.application_id,
+            className: Utils.className(classes.activity),
+            source: "Profile Popout",
+            actionColor: classes.buttonColor,
+            openAction: props.onClose,
+            onOpenGameProfile: props.onClose
+        }
+    ), shouldShowControls && React.createElement("div", {
+        className: styles$1.controls
+    }, React.createElement(
+        Tooltip, {
+            key: "LEFT",
+            text: Messages.PAGINATION_PREVIOUS,
+            tooltipClassName: styles$1.tooltip,
+            spacing: 14
+        },
+        (props2) => React.createElement(
+            "div", {
+                ...props2,
+                className: Utils.className(styles$1.caret, {
+                    [styles$1.disabled]: !canGo("backward")
+                }),
+                onClick: goBackward
+            },
+            React.createElement(Caret, {
+                direction: "left"
+            })
+        )
+    ), React.createElement("div", {
+        className: styles$1.carosell
+    }, activities.map((_, i) => React.createElement(
+        "div", {
+            key: "dot--" + i,
+            onClick: () => setActivityIndex(i),
+            className: Utils.className(styles$1.dot, {
+                [styles$1.selected]: i === activityIndex
+            })
+        }
+    ))), React.createElement(
+        Tooltip, {
+            key: "RIGHT",
+            text: Messages.PAGINATION_NEXT,
+            tooltipClassName: styles$1.tooltip,
+            spacing: 14
+        },
+        (props2) => React.createElement(
+            "div", {
+                ...props2,
+                className: Utils.className(styles$1.caret, {
+                    [styles$1.disabled]: !canGo("forward")
+                }),
+                onClick: goForward
+            },
+            React.createElement(Caret, {
+                direction: "right"
+            })
+        )
+    ))));
+}
+
+/*@end */
+
+/* @module changelog.css */
+Styles.sheets.push("/* changelog.css */", `.SAA-changelog-item {
+    color: #ddd;
+}
+
+.SAA-changelog-header {
+    text-transform: uppercase;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.item-changelog-added .SAA-changelog-header {
+    color: #45BA6A;
+}
+.item-changelog-fixed .SAA-changelog-header {
+    color: #EC4245;
+}
+.item-changelog-improved .SAA-changelog-header {
+    color: #5865F2;
+}
+
+.SAA-changelog-header::after {
+    content: "";
+    flex-grow: 1;
+    height: 1px;
+    background: currentColor;
+    margin-left: 7px;
+}
+
+.SAA-changelog-item span {
+    display: list-item;
+    margin-left: 5px;
+    list-style: inside;
+}
+
+.SAA-changelog-item span::marker {
+    color: var(--background-accent);
+}
+.SAA-changelog-banner {
+    width: 405px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.SAA-title-wrap {
+    font-size: 18px;
+}
+
+.SAA-title-wrap span {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: var(--font-primary);
+}
+`); /*@end */
+
+/* @module index.jsx */
+class ShowAllActivities {
+    maybeShowChangelog() {
+        if (config.version === Settings.get("latestUsedVersion"))
+            return;
+        const items = config.changelog.map((item) => React.createElement("div", {
+            className: "SAA-changelog-item item-changelog-" + item.type
+        }, React.createElement("h4", {
+            className: "SAA-changelog-header"
+        }, item.type), React.createElement("span", null, item.items)));
+        "changelogImage" in config && items.unshift(
+            React.createElement("img", {
+                className: "SAA-changelog-banner",
+                src: config.changelogImage
+            })
+        );
+        Settings.set("latestUsedVersion", config.version);
+        const formatter = new Intl.DateTimeFormat(document.documentElement.lang, {
+            month: "long",
+            day: "numeric",
+            year: "numeric"
+        });
+        UI.alert(React.createElement("div", {
+            className: "SAA-title-wrap"
+        }, React.createElement("h1", null, "What's New - ", config.name), React.createElement("span", null, formatter.format(new Date(config.changelogDate)))), items);
+    }
+    getSettingsPanel() {
+        return React.createElement(SettingsPanel, null);
+    }
+    start() {
+        Styles.load();
+        this.patchUserActivityContainer();
+        this.maybeShowChangelog();
+    }
+    patchUserActivityContainer() {
+        const [UserActivityModule, method] = Webpack$1.getMangled((m) => m?.toString?.().includes("onOpenGameProfile:"));
+        Patcher.after(UserActivityModule, method, (_, [props], res) => {
+            if (props.__SAA)
+                return;
+            const youTellMe = res.type;
+            const ActivityType = res?.props?.children?.type;
+            if (typeof youTellMe !== "function" || typeof ActivityType !== "function")
+                return;
+            return React.createElement(ActivityWrapper, {
+                activityType: ActivityType,
+                whatever: youTellMe,
+                user: props.user,
+                ...props
+            });
+        });
+    }
+    stop() {
+        Styles.unload();
+        Patcher.unpatchAll();
+    }
+}
+
+/*@end */
+
+module.exports = ShowAllActivities;
